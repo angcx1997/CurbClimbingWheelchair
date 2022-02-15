@@ -632,8 +632,6 @@ bool climbingForward(float dist) {
 //Control rear and back wheel to set encoder position using PID controller
 bool goto_pos(int enc, PID_t pid_t) {
     int cur_enc_pos;
-    ENCODER_Read(&encoderBack);
-    ENCODER_Read(&encoderFront);
     if (pid_t == frontClimb_pid) {
 	cur_enc_pos = (int) encoderFront.encoder_pos;
 	if (pid_need_compute(frontClimb_pid) && fabs(enc - cur_enc_pos) > 5) {

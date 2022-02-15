@@ -137,6 +137,9 @@ uint8_t motor_receive_buf[9];
 //Hub Motor UART receive
 uint8_t receive_buf[15];
 Encoder_Feedback hub_encoder_feedback;
+
+TickType_t last_can_rx_t[2] = {0}; //To keep track of CAN bus reception
+
 /* USER CODE END 0 */
 
 /**
@@ -310,6 +313,9 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 		encoderBack.angleDeg -= 360;
 	    if (encoderBack.encoder_pos >= MAX_BACK_ALLOWABLE_ENC)
 		encoderBack.signed_encoder_pos = encoderBack.encoder_pos - 4096 * BACK_GEAR_RATIO;
+
+	    last_can_rx_t[BACK_INDEX] = xTaskGetTickCountFromISR();
+
 	}
 	if (incoming[1] == ENC_ADDR_RIGHT) {
 	    ENCODER_Sort_Incoming(incoming, &encoderFront);
@@ -325,6 +331,8 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 	    }
 	    if (encoderFront.encoder_pos >= MAX_FRONT_ALLOWABLE_ENC)
 		encoderFront.signed_encoder_pos = encoderFront.encoder_pos - 4096 * FRONT_GEAR_RATIO;
+
+	    last_can_rx_t[FRONT_INDEX] = xTaskGetTickCountFromISR();
 	}
     }
 }
