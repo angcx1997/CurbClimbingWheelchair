@@ -133,6 +133,10 @@ void StartDefaultTask(void *argument);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 uint8_t motor_receive_buf[9];
+
+//Hub Motor UART receive
+uint8_t receive_buf[15];
+Encoder_Feedback hub_encoder_feedback;
 /* USER CODE END 0 */
 
 /**
@@ -290,37 +294,90 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 //Left Encoder Callback
-static CAN_RxHeaderTypeDef canRxHeader;
-uint8_t incoming[8];
-if (hcan == &hcan1) {
-    HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &canRxHeader, incoming);
-    if (incoming[1] == ENC_ADDR_LEFT) {
-	ENCODER_Sort_Incoming(incoming, &encoderBack);
-	//Process the angle and GR
-	//4096 is encoder single turn value
-	//Need to check the encoder value in the correct direction
-	encoderBack.encoder_pos = (uint32_t) ((4096 * BACK_GEAR_RATIO) - encoderBack.encoder_pos)
-		% (4096 * BACK_GEAR_RATIO);
-	encoderBack.angleDeg = (float) encoderBack.encoder_pos / (4096 * BACK_GEAR_RATIO) * 360 + 36.587;
-	if (encoderBack.angleDeg > 360)
-	    encoderBack.angleDeg -= 360;
-	if (encoderBack.encoder_pos >= MAX_BACK_ALLOWABLE_ENC)
-	    encoderBack.signed_encoder_pos = encoderBack.encoder_pos - 4096 * BACK_GEAR_RATIO;
-    }
-    if (incoming[1] == ENC_ADDR_RIGHT) {
-	ENCODER_Sort_Incoming(incoming, &encoderFront);
-	if (4096 * 24 - encoderFront.encoder_pos < 30000) {
-	    encoderFront.encoder_pos = (4096 * 24 - encoderFront.encoder_pos) % (uint32_t) (4096 * FRONT_GEAR_RATIO);
-	    encoderFront.angleDeg = (float) encoderFront.encoder_pos / (4096 * FRONT_GEAR_RATIO) * 360 + 36.587;
+    static CAN_RxHeaderTypeDef canRxHeader;
+    uint8_t incoming[8];
+    if (hcan == &hcan1) {
+	HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &canRxHeader, incoming);
+	if (incoming[1] == ENC_ADDR_LEFT) {
+	    ENCODER_Sort_Incoming(incoming, &encoderBack);
+	    //Process the angle and GR
+	    //4096 is encoder single turn value
+	    //Need to check the encoder value in the correct direction
+	    encoderBack.encoder_pos = (uint32_t) ((4096 * BACK_GEAR_RATIO) - encoderBack.encoder_pos)
+		    % (4096 * BACK_GEAR_RATIO);
+	    encoderBack.angleDeg = (float) encoderBack.encoder_pos / (4096 * BACK_GEAR_RATIO) * 360 + 36.587;
+	    if (encoderBack.angleDeg > 360)
+		encoderBack.angleDeg -= 360;
+	    if (encoderBack.encoder_pos >= MAX_BACK_ALLOWABLE_ENC)
+		encoderBack.signed_encoder_pos = encoderBack.encoder_pos - 4096 * BACK_GEAR_RATIO;
 	}
-	else {
-	    encoderFront.encoder_pos = (4096 * FRONT_GEAR_RATIO) - encoderFront.encoder_pos;
-	    encoderFront.angleDeg = (float) encoderFront.encoder_pos / (4096 * FRONT_GEAR_RATIO) * 360 + 36.587 - 360;
+	if (incoming[1] == ENC_ADDR_RIGHT) {
+	    ENCODER_Sort_Incoming(incoming, &encoderFront);
+	    if (4096 * 24 - encoderFront.encoder_pos < 30000) {
+		encoderFront.encoder_pos = (4096 * 24 - encoderFront.encoder_pos)
+			% (uint32_t) (4096 * FRONT_GEAR_RATIO);
+		encoderFront.angleDeg = (float) encoderFront.encoder_pos / (4096 * FRONT_GEAR_RATIO) * 360 + 36.587;
+	    }
+	    else {
+		encoderFront.encoder_pos = (4096 * FRONT_GEAR_RATIO) - encoderFront.encoder_pos;
+		encoderFront.angleDeg = (float) encoderFront.encoder_pos / (4096 * FRONT_GEAR_RATIO) * 360 + 36.587
+			- 360;
+	    }
+	    if (encoderFront.encoder_pos >= MAX_FRONT_ALLOWABLE_ENC)
+		encoderFront.signed_encoder_pos = encoderFront.encoder_pos - 4096 * FRONT_GEAR_RATIO;
 	}
-	if (encoderFront.encoder_pos >= MAX_FRONT_ALLOWABLE_ENC)
-	    encoderFront.signed_encoder_pos = encoderFront.encoder_pos - 4096 * FRONT_GEAR_RATIO;
     }
 }
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+    //Hub Encoder callback
+    if (huart->Instance == USART3) {
+	//Checksum, make sure that response is correct
+	uint16_t sum = (uint16_t) receive_buf[0] + (uint16_t) receive_buf[1] + (uint16_t) receive_buf[2]
+		+ (uint16_t) receive_buf[3] + (uint16_t) receive_buf[4] + (uint16_t) receive_buf[5]
+		+ (uint16_t) receive_buf[6] + (uint16_t) receive_buf[7] + (uint16_t) receive_buf[8]
+		+ (uint16_t) receive_buf[9] + (uint16_t) receive_buf[10] + (uint16_t) receive_buf[11]
+		+ (uint16_t) receive_buf[12] + (uint16_t) receive_buf[13];
+	if ((uint8_t) sum == receive_buf[14]) {
+	    //Encoder Feedback
+	    if (receive_buf[0] == 0xAA && receive_buf[1] == 0xA4 && receive_buf[3] == 0x00) {
+		hub_encoder_feedback.encoder_1 = (receive_buf[9] << 24) + (receive_buf[8] << 16) + (receive_buf[7] << 8)
+			+ (receive_buf[6]);
+		hub_encoder_feedback.encoder_2 = (receive_buf[13] << 24) + (receive_buf[12] << 16)
+			+ (receive_buf[11] << 8) + (receive_buf[10]);
+	    }
+	}
+    }
+    //Sabertooth Callback
+//    if (huart->Instance == USART6) {
+//	MotorProcessReply(&sabertooth_handler, motor_receive_buf, sizeof(motor_receive_buf));
+//    }
+
+    //curb change detection callback
+//    if (huart->Instance == USART1) {
+//	//how many bytes received
+//	uint8_t len = RX_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
+//	uint16_t distance = TFMINI_Plus_RcvData(pBuffer, len);
+//	//send the received data;
+//	if (distance != 0) {
+//	    uint16_t distanceNoNoise = Noise_loop(distance);
+//	    uint16_t diff = detectCurb_down(distanceNoNoise);
+//	    if (diff >= CURBHEIGHT) {
+//		//stop the base wheel completely
+//		MotorThrottle(&sabertoothf_handler, 1, 0);
+//		MotorThrottle(&sabertooth_handler, 2, 0);
+//		lifting_mode = STOP;
+//		//send the message to usb port
+//		USB_TransmitData(CURB_CHANGE);
+//	    }
+//	    else {
+//		USB_TransmitData(USB_MOVE);
+//	    }
+//	}
+//	HAL_UART_Receive_DMA(&huart1, pBuffer, RX_SIZE);
+//	last_uart_tx_time = HAL_GetTick();
+//    }
+
 }
 
 /* USER CODE END 4 */
@@ -333,14 +390,14 @@ if (hcan == &hcan1) {
  */
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument) {
-/* init code for USB_DEVICE */
-MX_USB_DEVICE_Init();
-/* USER CODE BEGIN 5 */
-/* Infinite loop */
-for (;;) {
-    osDelay(1);
-}
-/* USER CODE END 5 */
+    /* init code for USB_DEVICE */
+    MX_USB_DEVICE_Init();
+    /* USER CODE BEGIN 5 */
+    /* Infinite loop */
+    for (;;) {
+	osDelay(1);
+    }
+    /* USER CODE END 5 */
 }
 
 /**
@@ -352,15 +409,15 @@ for (;;) {
  * @retval None
  */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-/* USER CODE BEGIN Callback 0 */
+    /* USER CODE BEGIN Callback 0 */
 
-/* USER CODE END Callback 0 */
-if (htim->Instance == TIM6) {
-    HAL_IncTick();
-}
-/* USER CODE BEGIN Callback 1 */
+    /* USER CODE END Callback 0 */
+    if (htim->Instance == TIM6) {
+	HAL_IncTick();
+    }
+    /* USER CODE BEGIN Callback 1 */
 
-/* USER CODE END Callback 1 */
+    /* USER CODE END Callback 1 */
 }
 
 /**
@@ -368,12 +425,12 @@ if (htim->Instance == TIM6) {
  * @retval None
  */
 void Error_Handler(void) {
-/* USER CODE BEGIN Error_Handler_Debug */
-/* User can add his own implementation to report the HAL error return state */
-__disable_irq();
-while (1) {
-}
-/* USER CODE END Error_Handler_Debug */
+    /* USER CODE BEGIN Error_Handler_Debug */
+    /* User can add his own implementation to report the HAL error return state */
+    __disable_irq();
+    while (1) {
+    }
+    /* USER CODE END Error_Handler_Debug */
 }
 
 #ifdef  USE_FULL_ASSERT
