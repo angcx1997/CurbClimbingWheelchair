@@ -32,7 +32,6 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -42,12 +41,44 @@ extern "C" {
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
+#define FREQUENCY 1000
 
+#define LEFT_				0
+#define RIGHT_INDEX 			1
+#define FRONT_INDEX			0
+#define BACK_INDEX			1
+
+#define WHEEL_DIA			0.25
+#define WHEEL_ACC_LIMIT			10.0
+#define BASE_WIDTH 			0.5
+
+#define BASE_LENGTH			0.9
+
+#define HUB_DIAMETER  			0.123
+#define FRONT_CLIMB_WHEEL_DIAMETER  	0.125
+#define INNER_ARM_LENGTH		0.16
+#define OUTER_ARM_LENGTH 		0.24
+
+#define FRONT_GEAR_RATIO		2.2
+#define BACK_GEAR_RATIO			2
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
+extern const float CLIMBING_LEG_LENGTH; //in m, measured from the pivot to the center of hub motor
+extern const float BASE_HEIGHT;
+extern const float BACK_BASE_HEIGHT ;
 
+//ALLOWABLE is the maximum pos the climbing wheel can turn
+//FRONT_CLIMBING is the pos that the base above the climbing wheel w
+extern const uint32_t MAX_FRONT_ALLOWABLE_ENC;
+extern const uint32_t MIN_FRONT_ALLOWABLE_ENC; //6600
+extern const uint32_t MAX_FRONT_CLIMBING_ENC; //used for climbing up
+extern const uint32_t MAX_BACK_ALLOWABLE_ENC;
+extern const uint32_t MIN_BACK_ALLOWABLE_ENC;
+extern const uint32_t MAX_BACK_CLIMBING_ENC; //used when climbing down
+extern const uint32_t FRONT_FULL_ROTATION_ENC;
+extern const uint32_t BACK_FULL_ROTATION_ENC;
 /* USER CODE END EM */
 
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
@@ -56,7 +87,12 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+void Task_Keyboard(void *param);
+void Task_NormalDrive(void *param);
+void Task_Encoder(void *param);
+void Task_Joystick(void *param);
+void Task_Climbing(void *param);
+void Task_USB(void *param);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
@@ -144,7 +180,6 @@ void Error_Handler(void);
 #define Button2_Pin GPIO_PIN_1
 #define Button2_GPIO_Port GPIOE
 /* USER CODE BEGIN Private defines */
-
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

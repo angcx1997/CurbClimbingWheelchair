@@ -41,6 +41,20 @@ static void MX_SPI1_Init(void);
 static void MX_USART6_UART_Init(void);
 static void MX_USART1_UART_Init(void);
 
+void Peripheral_Init(void) {
+    MX_GPIO_Init();
+    MX_DMA_Init();
+    MX_I2C1_Init();
+    MX_TIM1_Init();
+    MX_TIM2_Init();
+    MX_USART3_UART_Init();
+    MX_TIM3_Init();
+    MX_TIM8_Init();
+    MX_CAN1_Init();
+    MX_SPI1_Init();
+    MX_USART6_UART_Init();
+    MX_USART1_UART_Init();
+}
 /**
  * @brief CAN1 Initialization Function
  * @param None
@@ -66,12 +80,31 @@ static void MX_CAN1_Init(void) {
     hcan1.Init.AutoWakeUp = DISABLE;
     hcan1.Init.AutoRetransmission = DISABLE;
     hcan1.Init.ReceiveFifoLocked = DISABLE;
-    hcan1.Init.TransmitFifoPriority = DISABLE;
+    hcan1.Init.TransmitFifoPriority = ENABLE;
     if (HAL_CAN_Init(&hcan1) != HAL_OK) {
 	Error_Handler();
     }
     /* USER CODE BEGIN CAN1_Init 2 */
+    CAN_FilterTypeDef canfil_1;
+    canfil_1.FilterBank = 0;
+    canfil_1.FilterMode = CAN_FILTERMODE_IDMASK;
+    canfil_1.FilterScale = CAN_FILTERSCALE_32BIT;
+    canfil_1.FilterIdHigh = 0x0000;
+    canfil_1.FilterIdLow = 0x0000;
+    canfil_1.FilterMaskIdHigh = 0x0000;
+    canfil_1.FilterMaskIdLow = 0x0000;
+    canfil_1.FilterFIFOAssignment = CAN_RX_FIFO0;
+    canfil_1.FilterActivation = CAN_FILTER_ENABLE;
+    canfil_1.SlaveStartFilterBank = 0;
 
+    if (HAL_CAN_ConfigFilter(&hcan1, &canfil_1) != HAL_OK)
+	Error_Handler();
+
+    if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING))
+	return Error_Handler();
+
+    if (HAL_CAN_Start(&hcan1))
+	return Error_Handler();
     /* USER CODE END CAN1_Init 2 */
 
 }
@@ -166,16 +199,16 @@ static void MX_TIM1_Init(void) {
     /* USER CODE END TIM1_Init 0 */
 
     TIM_ClockConfigTypeDef sClockSourceConfig = {
-    0
+	    0
     };
     TIM_MasterConfigTypeDef sMasterConfig = {
-    0
+	    0
     };
     TIM_OC_InitTypeDef sConfigOC = {
-    0
+	    0
     };
     TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {
-    0
+	    0
     };
 
     /* USER CODE BEGIN TIM1_Init 1 */
@@ -242,13 +275,13 @@ static void MX_TIM2_Init(void) {
     /* USER CODE END TIM2_Init 0 */
 
     TIM_ClockConfigTypeDef sClockSourceConfig = {
-    0
+	    0
     };
     TIM_MasterConfigTypeDef sMasterConfig = {
-    0
+	    0
     };
     TIM_OC_InitTypeDef sConfigOC = {
-    0
+	    0
     };
 
     /* USER CODE BEGIN TIM2_Init 1 */
@@ -301,10 +334,10 @@ static void MX_TIM3_Init(void) {
     /* USER CODE END TIM3_Init 0 */
 
     TIM_ClockConfigTypeDef sClockSourceConfig = {
-    0
+	    0
     };
     TIM_MasterConfigTypeDef sMasterConfig = {
-    0
+	    0
     };
 
     /* USER CODE BEGIN TIM3_Init 1 */
@@ -346,13 +379,13 @@ static void MX_TIM8_Init(void) {
     /* USER CODE END TIM8_Init 0 */
 
     TIM_ClockConfigTypeDef sClockSourceConfig = {
-    0
+	    0
     };
     TIM_MasterConfigTypeDef sMasterConfig = {
-    0
+	    0
     };
     TIM_IC_InitTypeDef sConfigIC = {
-    0
+	    0
     };
 
     /* USER CODE BEGIN TIM8_Init 1 */
@@ -524,7 +557,7 @@ static void MX_DMA_Init(void) {
  */
 static void MX_GPIO_Init(void) {
     GPIO_InitTypeDef GPIO_InitStruct = {
-    0
+	    0
     };
 
     /* GPIO Ports Clock Enable */

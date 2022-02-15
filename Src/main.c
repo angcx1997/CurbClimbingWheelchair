@@ -24,6 +24,28 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "peripheral_init.h"
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include "adc.h"
+#include "encoder.h"
+#include "button.h"
+#include "mpu6050.h"
+#include "bd25l.h"
+#include "X2_6010S.h"
+//#include "wheelchair.h"
+#include "PID.h"
+#include "Sabertooth.h"
+#include "joystick.h"
+#include "differentialDrive.h"
+#include "DifferentialDrivetoSabertooth.h"
+
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
+#include "timers.h"
 
 /* USER CODE END Includes */
 
@@ -34,11 +56,25 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
+const float CLIMBING_LEG_LENGTH = 0.349; //in m, measured from the pivot to the center of hub motor
+const float BASE_HEIGHT = 0.15;
+const float BACK_BASE_HEIGHT = 0.15;
 
+//ALLOWABLE is the maximum pos the climbing wheel can turn
+//FRONT_CLIMBING is the pos that the base above the climbing wheel w
+const uint32_t MAX_FRONT_ALLOWABLE_ENC = 3100;
+const uint32_t MIN_FRONT_ALLOWABLE_ENC = 6600; //6600
+const uint32_t MAX_FRONT_CLIMBING_ENC = 1950; //used for climbing up
+const uint32_t MAX_BACK_ALLOWABLE_ENC = 3000;
+const uint32_t MIN_BACK_ALLOWABLE_ENC = 7500;
+const uint32_t MAX_BACK_CLIMBING_ENC = 1850; //used when climbing down
+const uint32_t FRONT_FULL_ROTATION_ENC = 4096 * FRONT_GEAR_RATIO;
+const uint32_t BACK_FULL_ROTATION_ENC = 4096 * BACK_GEAR_RATIO;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -66,10 +102,23 @@ DMA_HandleTypeDef hdma_usart6_tx;
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
-.name = "defaultTask", .stack_size = 128 * 4, .priority = (osPriority_t) osPriorityNormal,
+	.name = "defaultTask", .stack_size = 128 * 4, .priority = (osPriority_t) osPriorityNormal,
 };
 /* USER CODE BEGIN PV */
 
+/* Task Handler */
+TaskHandle_t task_keyboard;
+TaskHandle_t task_normalDrive;
+TaskHandle_t task_encoder;
+TaskHandle_t task_joystick;
+TaskHandle_t task_climbing;
+TaskHandle_t task_usb;
+
+QueueHandle_t queue_joystick;
+QueueHandle_t encoder;
+
+EncoderHandle encoderBack;
+EncoderHandle encoderFront;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -91,7 +140,7 @@ void StartDefaultTask(void *argument);
  */
 int main(void) {
     /* USER CODE BEGIN 1 */
-
+    BaseType_t status;
     /* USER CODE END 1 */
 
     /* MCU Configuration--------------------------------------------------------*/
@@ -112,7 +161,7 @@ int main(void) {
 
     /* Initialize all configured peripherals */
     /* USER CODE BEGIN 2 */
-
+    Peripheral_Init();
     /* USER CODE END 2 */
 
     /* Init scheduler */
@@ -132,6 +181,8 @@ int main(void) {
 
     /* USER CODE BEGIN RTOS_QUEUES */
     /* add queues, ... */
+    queue_joystick = xQueueCreate(5, sizeof(JoystickHandle)); //store pointer of joystick handler
+    configASSERT(queue_joystick != NULL);
     /* USER CODE END RTOS_QUEUES */
 
     /* Create the thread(s) */
@@ -140,12 +191,25 @@ int main(void) {
 
     /* USER CODE BEGIN RTOS_THREADS */
     /* add threads, ... */
+
+    status = xTaskCreate(Task_Keyboard, "Keyboard Task", 250, NULL, 2, &task_keyboard);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Climbing, "Climbing Task", 250, NULL, 2, &task_climbing);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Joystick, "Joystick Task", 250, NULL, 2, &task_joystick);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Encoder, "Encoder Task", 250, NULL, 2, &task_encoder);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_NormalDrive, "Normal Drive Task", 250, NULL, 2, &task_normalDrive);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_USB, "USB Task", 250, NULL, 2, &task_usb);
+    configASSERT(status == pdPASS);
+
     /* USER CODE END RTOS_THREADS */
 
     /* USER CODE BEGIN RTOS_EVENTS */
     /* add events, ... */
     /* USER CODE END RTOS_EVENTS */
-
     /* Start scheduler */
     osKernelStart();
 
@@ -166,10 +230,10 @@ int main(void) {
  */
 void SystemClock_Config(void) {
     RCC_OscInitTypeDef RCC_OscInitStruct = {
-    0
+	    0
     };
     RCC_ClkInitTypeDef RCC_ClkInitStruct = {
-    0
+	    0
     };
 
     /** Configure the main internal regulator output voltage
@@ -204,6 +268,59 @@ void SystemClock_Config(void) {
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    switch (GPIO_Pin) {
+	case AD_BUSY_Pin: {
+	    int16_t adc_rawData[8];
+	    JoystickHandle joystick_handler_irq;
+	    ADC_Read(adc_rawData);
+	    joystick_handler_irq.x = adc_rawData[2];
+	    joystick_handler_irq.y = adc_rawData[1];
+	    xQueueSendFromISR(queue_joystick, (void* )&joystick_handler_irq, &xHigherPriorityTaskWoken);
+	    break;
+	}
+	default:
+	    break;
+    }
+    /* Now the buffer is empty we can switch context if necessary. */
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
+//Left Encoder Callback
+static CAN_RxHeaderTypeDef canRxHeader;
+uint8_t incoming[8];
+if (hcan == &hcan1) {
+    HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &canRxHeader, incoming);
+    if (incoming[1] == ENC_ADDR_LEFT) {
+	ENCODER_Sort_Incoming(incoming, &encoderBack);
+	//Process the angle and GR
+	//4096 is encoder single turn value
+	//Need to check the encoder value in the correct direction
+	encoderBack.encoder_pos = (uint32_t) ((4096 * BACK_GEAR_RATIO) - encoderBack.encoder_pos)
+		% (4096 * BACK_GEAR_RATIO);
+	encoderBack.angleDeg = (float) encoderBack.encoder_pos / (4096 * BACK_GEAR_RATIO) * 360 + 36.587;
+	if (encoderBack.angleDeg > 360)
+	    encoderBack.angleDeg -= 360;
+	if (encoderBack.encoder_pos >= MAX_BACK_ALLOWABLE_ENC)
+	    encoderBack.signed_encoder_pos = encoderBack.encoder_pos - 4096 * BACK_GEAR_RATIO;
+    }
+    if (incoming[1] == ENC_ADDR_RIGHT) {
+	ENCODER_Sort_Incoming(incoming, &encoderFront);
+	if (4096 * 24 - encoderFront.encoder_pos < 30000) {
+	    encoderFront.encoder_pos = (4096 * 24 - encoderFront.encoder_pos) % (uint32_t) (4096 * FRONT_GEAR_RATIO);
+	    encoderFront.angleDeg = (float) encoderFront.encoder_pos / (4096 * FRONT_GEAR_RATIO) * 360 + 36.587;
+	}
+	else {
+	    encoderFront.encoder_pos = (4096 * FRONT_GEAR_RATIO) - encoderFront.encoder_pos;
+	    encoderFront.angleDeg = (float) encoderFront.encoder_pos / (4096 * FRONT_GEAR_RATIO) * 360 + 36.587 - 360;
+	}
+	if (encoderFront.encoder_pos >= MAX_FRONT_ALLOWABLE_ENC)
+	    encoderFront.signed_encoder_pos = encoderFront.encoder_pos - 4096 * FRONT_GEAR_RATIO;
+    }
+}
+}
 
 /* USER CODE END 4 */
 
@@ -215,14 +332,14 @@ void SystemClock_Config(void) {
  */
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument) {
-    /* init code for USB_DEVICE */
-    MX_USB_DEVICE_Init();
-    /* USER CODE BEGIN 5 */
-    /* Infinite loop */
-    for (;;) {
-	osDelay(1);
-    }
-    /* USER CODE END 5 */
+/* init code for USB_DEVICE */
+MX_USB_DEVICE_Init();
+/* USER CODE BEGIN 5 */
+/* Infinite loop */
+for (;;) {
+    osDelay(1);
+}
+/* USER CODE END 5 */
 }
 
 /**
@@ -234,15 +351,15 @@ void StartDefaultTask(void *argument) {
  * @retval None
  */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-    /* USER CODE BEGIN Callback 0 */
+/* USER CODE BEGIN Callback 0 */
 
-    /* USER CODE END Callback 0 */
-    if (htim->Instance == TIM6) {
-	HAL_IncTick();
-    }
-    /* USER CODE BEGIN Callback 1 */
+/* USER CODE END Callback 0 */
+if (htim->Instance == TIM6) {
+    HAL_IncTick();
+}
+/* USER CODE BEGIN Callback 1 */
 
-    /* USER CODE END Callback 1 */
+/* USER CODE END Callback 1 */
 }
 
 /**
@@ -250,12 +367,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
  * @retval None
  */
 void Error_Handler(void) {
-    /* USER CODE BEGIN Error_Handler_Debug */
-    /* User can add his own implementation to report the HAL error return state */
-    __disable_irq();
-    while (1) {
-    }
-    /* USER CODE END Error_Handler_Debug */
+/* USER CODE BEGIN Error_Handler_Debug */
+/* User can add his own implementation to report the HAL error return state */
+__disable_irq();
+while (1) {
+}
+/* USER CODE END Error_Handler_Debug */
 }
 
 #ifdef  USE_FULL_ASSERT

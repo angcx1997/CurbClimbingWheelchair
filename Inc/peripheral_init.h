@@ -32,4 +32,6 @@ extern DMA_HandleTypeDef hdma_usart3_tx;
 extern DMA_HandleTypeDef hdma_usart6_rx;
 extern DMA_HandleTypeDef hdma_usart6_tx;
 
+
+void Peripheral_Init(void);
 #endif /* PERIPHERAL_INIT_H_ */
