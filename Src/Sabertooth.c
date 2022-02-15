@@ -256,7 +256,7 @@ static void writeSabertoothCommand(Sabertooth_Handler *st_handler, uint8_t comma
 		while(HAL_UART_Receive_DMA(st_handler->huart, motor_receive_buf, 9) != HAL_OK
 				|| HAL_GetTick() - t > 5000);
 
-	}
+    }
 }
 
 static void writeSabertoothSetCommand(Sabertooth_Handler *st_handler, uint8_t setType, uint8_t targetType, uint8_t targetNumber, int16_t value) {

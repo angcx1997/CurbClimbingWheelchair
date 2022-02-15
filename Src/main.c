@@ -107,9 +107,10 @@ const osThreadAttr_t defaultTask_attributes = {
 /* USER CODE BEGIN PV */
 
 /* Task Handler */
+TaskHandle_t task_control;
 TaskHandle_t task_keyboard;
 TaskHandle_t task_normalDrive;
-TaskHandle_t task_encoder;
+TaskHandle_t task_climb_sensor;
 TaskHandle_t task_joystick;
 TaskHandle_t task_climbing;
 TaskHandle_t task_usb;
@@ -131,7 +132,7 @@ void StartDefaultTask(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+uint8_t motor_receive_buf[9];
 /* USER CODE END 0 */
 
 /**
@@ -156,7 +157,6 @@ int main(void) {
     SystemClock_Config();
 
     /* USER CODE BEGIN SysInit */
-
     /* USER CODE END SysInit */
 
     /* Initialize all configured peripherals */
@@ -191,14 +191,15 @@ int main(void) {
 
     /* USER CODE BEGIN RTOS_THREADS */
     /* add threads, ... */
-
+    status = xTaskCreate(Task_Control, "Control Task", 250, NULL, 2, &task_control);
+    configASSERT(status == pdPASS);
     status = xTaskCreate(Task_Keyboard, "Keyboard Task", 250, NULL, 2, &task_keyboard);
     configASSERT(status == pdPASS);
     status = xTaskCreate(Task_Climbing, "Climbing Task", 250, NULL, 2, &task_climbing);
     configASSERT(status == pdPASS);
     status = xTaskCreate(Task_Joystick, "Joystick Task", 250, NULL, 2, &task_joystick);
     configASSERT(status == pdPASS);
-    status = xTaskCreate(Task_Encoder, "Encoder Task", 250, NULL, 2, &task_encoder);
+    status = xTaskCreate(Task_Climb_Sensor, "Climb Sensor Task", 300, NULL, 2, &task_climb_sensor);
     configASSERT(status == pdPASS);
     status = xTaskCreate(Task_NormalDrive, "Normal Drive Task", 250, NULL, 2, &task_normalDrive);
     configASSERT(status == pdPASS);
