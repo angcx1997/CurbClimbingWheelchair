@@ -75,11 +75,12 @@ void differentialDriveInit(differentialDrive_Handler* dd_handler, uint32_t frequ
  * @Note              -
  */
 void computeSpeed(differentialDrive_Handler* dd_handler, int XValue, int YValue, Gear_Level gear_level) {
-    float   nMotPremixL = 0;    // Motor (left)  premixed output        (-MAX_JOYSTICK_VALUE..+MAX_JOYSTICK_VALUE)
-    float   nMotPremixR = 0;    // Motor (right) premixed output        (-MAX_JOYSTICK_VALUE..+MAX_JOYSTICK_VALUE)
-    int     nPivSpeed = 0;      // Pivot Speed                          (-MAX_JOYSTICK_VALUE..+MAX_JOYSTICK_VALUE)
-    float   fPivScale = 0;      // Balance scale b/w drive and pivot    (   0..1   )
+
 #if MAPPING_ALGORITHM == 1
+	float   nMotPremixL = 0;    // Motor (left)  premixed output        (-MAX_JOYSTICK_VALUE..+MAX_JOYSTICK_VALUE)
+	float   nMotPremixR = 0;    // Motor (right) premixed output        (-MAX_JOYSTICK_VALUE..+MAX_JOYSTICK_VALUE)
+	int     nPivSpeed = 0;      // Pivot Speed                          (-MAX_JOYSTICK_VALUE..+MAX_JOYSTICK_VALUE)
+	float   fPivScale = 0;      // Balance scale b/w drive and pivot    (   0..1   )
     // Calculate Drive Turn output due to Joystick X input
     if (YValue >= 0) {
         // Forward

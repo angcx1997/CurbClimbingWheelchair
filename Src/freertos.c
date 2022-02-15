@@ -326,8 +326,8 @@ void Task_Climbing(void *param) {
     uint8_t climb_first_iteration = 1; //1 if 1st climb iteration
     uint8_t finish_climbing_flag = 0; //1 if climbing motion finish
     Operation_Mode dummy_mode = EMPTY; //to store climbing up or down state
-    uint32_t back_encoder_input;
-    uint32_t front_climbDown_enc;
+    uint32_t back_encoder_input = 0;
+    uint32_t front_climbDown_enc = 0;
 
     //Initialize front and back climbing position controller
     frontClimb_pid = pid_create(&frontClimb_ctrl, &frontClimb_input, &frontClimb_output, &frontClimb_setpoint,
@@ -393,8 +393,8 @@ void Task_Climbing(void *param) {
 		lifting_mode = EMPTY;
 	    }
 	    else {
-		runMotor(&rearMotor, 0);
-		runMotor(&backMotor, 0);
+		speed[FRONT_INDEX] = 0;
+		speed[BACK_INDEX] = 0;
 		lifting_mode = LANDING;
 		button_prev_state = 0;
 		vTaskDelay(pdMS_TO_TICKS(300));
@@ -428,8 +428,8 @@ void Task_Climbing(void *param) {
 
 	//When both leg touches ground
 	if ((touch_down[FRONT_INDEX] == 1 && touch_down[BACK_INDEX] == 1) && lifting_mode == LANDING) {
-	    runMotor(&rearMotor, 0);
-	    runMotor(&backMotor, 0);
+	    speed[FRONT_INDEX] = 0;
+	    speed[BACK_INDEX] = 0;
 	    emBrakeMotor(0);
 	    lifting_mode = dummy_mode;
 	    vTaskDelay(50); //Add delay to ensure the legs lose its inertia
@@ -479,7 +479,7 @@ void Task_Climbing(void *param) {
 		    emBrakeMotor(1);
 		    finish_climbing_flag = false;
 		    lifting_mode = RETRACTION;
-		    HAL_Delay(500);
+		    vTaskDelay(pdMS_TO_TICKS(100));
 		}
 	    }
 	}
@@ -512,7 +512,7 @@ void Task_Climbing(void *param) {
 		    emBrakeMotor(1);
 		    finish_climbing_flag = false;
 		    lifting_mode = RETRACTION;
-		    HAL_Delay(500);
+		    vTaskDelay(pdMS_TO_TICKS(100));
 		}
 	    }
 	}
