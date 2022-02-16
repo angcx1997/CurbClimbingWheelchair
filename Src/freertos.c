@@ -153,6 +153,7 @@ extern float backClimb_setpoint;
 extern TickType_t last_hub_rx_t;
 extern TickType_t last_can_rx_t[2];
 
+uint32_t back_encoder_input = 0;
 uint8_t finish_climbing_flag = 0; //1 if climbing motion finish
 /* USER CODE END Variables */
 
@@ -342,7 +343,7 @@ void Task_Climbing(void *param) {
     uint8_t climb_first_iteration = 1; //1 if 1st climb iteration
 
     Operation_Mode dummy_mode = EMPTY; //to store climbing up or down state
-    uint32_t back_encoder_input = 0;
+
     uint32_t front_climbDown_enc = 0;
 
     //Initialize rear and back motor to zero and engage the brake
@@ -411,10 +412,10 @@ void Task_Climbing(void *param) {
 	    emBrakeMotor(1);
 
 	    //if front touch before back, climbing up process
-	    if (touch_down[BACK_INDEX] == 0 && touch_down[FRONT_INDEX] == 1  && lifting_mode == LANDING )
+	    if (touch_down[BACK_INDEX] == 0 && touch_down[FRONT_INDEX] == 1 && lifting_mode == LANDING)
 		dummy_mode = CLIMB_UP;
 	    //if back touch before front, climbing down process
-	    else if (touch_down[BACK_INDEX] == 1 && touch_down[FRONT_INDEX] == 0  && lifting_mode == LANDING)
+	    else if (touch_down[BACK_INDEX] == 1 && touch_down[FRONT_INDEX] == 0 && lifting_mode == LANDING)
 		dummy_mode = CLIMB_DOWN;
 
 	    //continue to move the leg until it touches ground
@@ -455,7 +456,7 @@ void Task_Climbing(void *param) {
 			(float )acos(
 				-back_lifting_height
 				/ CLIMBING_LEG_LENGTH)) - 30.0; //30.0 is the bending angle of the extender(originally 36.6).
-		uint32_t back_encoder_input = (back_lifting_angle / 360.0) * (4096 * BACK_GEAR_RATIO);
+		back_encoder_input = (back_lifting_angle / 360.0) * (4096 * BACK_GEAR_RATIO);
 
 		//3 different scenerio to abort the climbing up task
 		//1. The angle calculated is not feasible
@@ -478,7 +479,7 @@ void Task_Climbing(void *param) {
 
 	    if (finish_climbing_flag == true) {
 		emBrakeMotor(0);
-		if (!(climbingForward(forward_distance + 0.03))) {
+		if (!(climbingForward(forward_distance))) {
 		    emBrakeMotor(1);
 		    finish_climbing_flag = false;
 		    lifting_mode = RETRACTION;
@@ -511,7 +512,7 @@ void Task_Climbing(void *param) {
 
 	    if (finish_climbing_flag == true) {
 		emBrakeMotor(0);
-		if (!(climbingForward(forward_distance))) {
+		if (!(climbingForward(forward_distance ))) {
 		    emBrakeMotor(1);
 		    finish_climbing_flag = false;
 		    lifting_mode = RETRACTION;
@@ -531,6 +532,8 @@ void Task_Climbing(void *param) {
 		    lifting_mode = NORMAL;
 	    }
 	    else {
+		pid_reset(frontClimb_pid);
+		pid_reset(backClimb_pid);
 		lifting_mode = NORMAL;
 	    }
 
@@ -557,11 +560,10 @@ void Task_Climbing(void *param) {
 	    if (encoderBack.encoder_pos < MIN_BACK_ALLOWABLE_ENC && speed[BACK_INDEX] < 0)
 		speed[BACK_INDEX] = 0;
 	}
-	if (lifting_mode == NORMAL)
-	{
+	if (lifting_mode == NORMAL) {
 	    speed[FRONT_INDEX] = 0;
 	    speed[BACK_INDEX] = 0;
-	    xTaskNotify(task_normalDrive,0,eNoAction);
+	    xTaskNotify(task_normalDrive, 0, eNoAction);
 	}
 	//**********************************************************************************//
 
@@ -573,8 +575,8 @@ void Task_Climbing(void *param) {
 	else
 	    emBrakeMotor(1);
 
-
-	vTaskDelay(10);
+	//Note that this time is critical to smooth climbing execution
+	vTaskDelay(100);
     }
 }
 
@@ -669,8 +671,7 @@ bool goto_pos(int enc, PID_t pid_t) {
 
 	}
 	else {
-//			speed[FRONT_INDEX] = 0;
-
+//	    speed[FRONT_INDEX] = 0;
 	    return false;
 	}
     }
