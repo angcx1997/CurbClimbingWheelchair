@@ -139,6 +139,7 @@ uint8_t receive_buf[15];
 Encoder_Feedback hub_encoder_feedback;
 
 TickType_t last_can_rx_t[2] = {0}; //To keep track of CAN bus reception
+TickType_t last_hub_rx_t = 0; //Keep track of HUB reception activity
 
 /* USER CODE END 0 */
 
@@ -169,6 +170,7 @@ int main(void) {
     /* Initialize all configured peripherals */
     /* USER CODE BEGIN 2 */
     Peripheral_Init();
+//    HAL_UART_Receive_DMA(&huart3, receive_buf, 15);
     /* USER CODE END 2 */
 
     /* Init scheduler */
@@ -348,13 +350,15 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		+ (uint16_t) receive_buf[12] + (uint16_t) receive_buf[13];
 	if ((uint8_t) sum == receive_buf[14]) {
 	    //Encoder Feedback
-	    if (receive_buf[0] == 0xAA && receive_buf[1] == 0xA4 && receive_buf[3] == 0x00) {
+	    if (receive_buf[0] == 0xAA && receive_buf[1] == 0xA4 && receive_buf[3] == 0x00 && receive_buf[4] == 0x00) {
 		hub_encoder_feedback.encoder_1 = (receive_buf[9] << 24) + (receive_buf[8] << 16) + (receive_buf[7] << 8)
 			+ (receive_buf[6]);
 		hub_encoder_feedback.encoder_2 = (receive_buf[13] << 24) + (receive_buf[12] << 16)
 			+ (receive_buf[11] << 8) + (receive_buf[10]);
+		last_hub_rx_t = xTaskGetTickCountFromISR();
 	    }
 	}
+//	HAL_UART_Receive_DMA(&huart3, receive_buf, 15);
     }
     //Sabertooth Callback
 //    if (huart->Instance == USART6) {
@@ -387,6 +391,22 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 //    }
 
 }
+
+/**
+  * @brief  Tx Transfer completed callbacks.
+  * @param  huart  Pointer to a UART_HandleTypeDef structure that contains
+  *                the configuration information for the specified UART module.
+  * @retval None
+  */
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  /* Prevent unused argument(s) compilation warning */
+  UNUSED(huart);
+  /* NOTE: This function should not be modified, when the callback is needed,
+           the HAL_UART_TxCpltCallback could be implemented in the user file
+   */
+}
+
 
 /* USER CODE END 4 */
 

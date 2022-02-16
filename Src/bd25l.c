@@ -207,7 +207,6 @@ void runMotor(Motor_TypeDef* motor, float speed){
 	  setMotorDir(motor, 0);
     }
 
-    HAL_Delay(50);
     brakeMotor(motor, 0);
     setMotorSpeed(motor, fabs(speed));
 

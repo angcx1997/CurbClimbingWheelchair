@@ -70,7 +70,7 @@ void hubMotor_Stop();
   * @param ang velocity
   * @retval None
   */
-void send_HubMotor(float m1_ang_speed, float m2_ang_speed);
+HAL_StatusTypeDef send_HubMotor(float m1_ang_speed, float m2_ang_speed);
 
 //TODO:Received message process
 /**

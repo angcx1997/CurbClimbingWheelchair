@@ -76,6 +76,7 @@ typedef enum {
     EMPTY,
     IDLE,
     STOP,
+    DANGER,
 } Operation_Mode;
 
 const float forward_distance = BASE_LENGTH; // (in meter) distance to travel during climbing process by hub
@@ -137,6 +138,7 @@ uint8_t button_state = 0;
 JoystickHandle *joystick_ptr = NULL;
 Operation_Mode lifting_mode = RETRACTION;
 int x, y;
+HAL_StatusTypeDef hub_motor_status;
 
 //Front Climbing Position Control
 struct pid_controller frontClimb_ctrl;
@@ -152,6 +154,10 @@ float backClimb_input = 0, backClimb_output = 0;
 float backClimb_setpoint = 0;
 float backClimb_kp = 0.3, backClimb_ki = 0.004, backClimb_kd = 0.00001;
 
+extern TickType_t last_hub_rx_t;
+extern TickType_t last_can_rx_t[2];
+
+uint8_t finish_climbing_flag = 0; //1 if climbing motion finish
 /* USER CODE END Variables */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -166,7 +172,16 @@ bool in_climb_process(int front_enc, int back_enc);
 /* USER CODE BEGIN Application */
 void Task_Control(void *param) {
     while (1) {
-	vTaskDelay(1000);
+	xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
+	if (lifting_mode == DANGER) {
+	    portENTER_CRITICAL();
+	    vTaskSuspendAll();
+	    runMotor(&rearMotor, 0);
+	    runMotor(&backMotor, 0);
+	    send_HubMotor(0, 0);
+	    LED_Mode_Configuration(DANGER);
+	    portEXIT_CRITICAL();
+	}
     }
 }
 
@@ -185,7 +200,7 @@ void Task_Keyboard(void *param) {
     button3.gpioPin = Button3_Pin;
 
     TickType_t tick = xTaskGetTickCount();
-    const TickType_t period = pdMS_TO_TICKS(500); //execution period
+    const TickType_t period = pdMS_TO_TICKS(250); //execution period
 
     while (1) {
 	GPIO_Digital_Filtered_Input(&button1, 30);
@@ -283,6 +298,11 @@ void Task_Climb_Sensor(void *param) {
 	else
 	    touch_down[BACK_INDEX] = 0;
 
+	if ((xTaskGetTickCount() - last_can_rx_t[0]) > 2000 || (xTaskGetTickCount() - last_can_rx_t[1]) > 2000) {
+	    lifting_mode = DANGER;
+	    xTaskNotify(task_control, 0, eNoAction);
+	}
+
 	vTaskDelayUntil(&tick, period);
     }
 }
@@ -324,7 +344,7 @@ void Task_Climbing(void *param) {
     //Store user press button state and climb iteration
     uint8_t button_prev_state = 0;
     uint8_t climb_first_iteration = 1; //1 if 1st climb iteration
-    uint8_t finish_climbing_flag = 0; //1 if climbing motion finish
+
     Operation_Mode dummy_mode = EMPTY; //to store climbing up or down state
     uint32_t back_encoder_input = 0;
     uint32_t front_climbDown_enc = 0;
@@ -356,16 +376,16 @@ void Task_Climbing(void *param) {
 	if (BITCHECK(button_state, 0) && (BITCHECK(button_state,2) == 0))
 	    speed[FRONT_INDEX] = 10;
 	else if (BITCHECK(button_state, 0) && BITCHECK(button_state, 2))
-	    speed[FRONT_INDEX] = 10;
+	    speed[FRONT_INDEX] = -10;
 	else if (BITCHECK(button_state,0) == 0)
-	    speed[FRONT_INDEX] = 10;
+	    speed[FRONT_INDEX] = 0;
 
 	if (BITCHECK(button_state, 1) && (BITCHECK(button_state,2) == 0))
 	    speed[BACK_INDEX] = 10;
 	else if (BITCHECK(button_state, 1) && BITCHECK(button_state, 2))
-	    speed[BACK_INDEX] = 10;
+	    speed[BACK_INDEX] = -10;
 	else if (BITCHECK(button_state,1) == 0)
-	    speed[BACK_INDEX] = 10;
+	    speed[BACK_INDEX] = 0;
 
 //	if ((state & (1 << 0)) && ((state & (1 << 2)) == 0))
 //	    speed[FRONT_INDEX] = 10;
@@ -408,10 +428,10 @@ void Task_Climbing(void *param) {
 	    emBrakeMotor(1);
 
 	    //if front touch before back, climbing up process
-	    if (touch_down[BACK_INDEX] == 0 && touch_down[FRONT_INDEX] == 1)
+	    if (touch_down[BACK_INDEX] == 0 && touch_down[FRONT_INDEX] == 1  && lifting_mode == LANDING )
 		dummy_mode = CLIMB_UP;
 	    //if back touch before front, climbing down process
-	    else if (touch_down[BACK_INDEX] == 1 && touch_down[FRONT_INDEX] == 0)
+	    else if (touch_down[BACK_INDEX] == 1 && touch_down[FRONT_INDEX] == 0  && lifting_mode == LANDING)
 		dummy_mode = CLIMB_DOWN;
 
 	    //continue to move the leg until it touches ground
@@ -528,7 +548,6 @@ void Task_Climbing(void *param) {
 		    lifting_mode = NORMAL;
 	    }
 	    else {
-
 		lifting_mode = NORMAL;
 	    }
 
@@ -555,6 +574,12 @@ void Task_Climbing(void *param) {
 	    if (encoderBack.encoder_pos < MIN_BACK_ALLOWABLE_ENC && speed[BACK_INDEX] < 0)
 		speed[BACK_INDEX] = 0;
 	}
+	if (lifting_mode == NORMAL)
+	{
+	    speed[FRONT_INDEX] = 0;
+	    speed[BACK_INDEX] = 0;
+	    xTaskNotify(task_normalDrive,0,eNoAction);
+	}
 	//**********************************************************************************//
 
 	runMotor(&rearMotor, speed[FRONT_INDEX]);
@@ -564,6 +589,7 @@ void Task_Climbing(void *param) {
 	    emBrakeMotor(0);
 	else
 	    emBrakeMotor(1);
+
 
 	vTaskDelay(10);
     }
@@ -588,6 +614,7 @@ void LED_Mode_Configuration(Operation_Mode mode) {
 	    HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
 	    break;
 	case RETRACTION:
+	case DANGER:
 	    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
 	    HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
 	default:
@@ -610,21 +637,25 @@ bool climbingForward(float dist) {
 	first_loop = false;
 	dist_remaining = dist;
     }
+    if (xTaskGetTickCount() - last_hub_rx_t > 1500) {
+	lifting_mode = DANGER;
+	xTaskNotify(task_control, 0, eNoAction);
+	return false;
+    }
     if (dist / dist_remaining >= 0 && first_loop == false) {
-	send_HubMotor(rps, rps);
+	hub_motor_status = send_HubMotor(rps, rps);
 	if (HAL_GetTick() - prev_tick > 1) {
 	    float dt = (float) (HAL_GetTick() - prev_tick) / FREQUENCY;
 	    float rad_per_s = ((float) (hub_encoder_feedback.encoder_2 - prev_enc) / dt) * 2 * M_PI / 4096;
 	    dist_remaining -= (HUB_DIAMETER * rad_per_s * dt) / 2;
 	    prev_tick = HAL_GetTick();
 	    prev_enc = hub_encoder_feedback.encoder_2;
-
 	}
 	return true;
     }
     else {
 	first_loop = true;
-	send_HubMotor(0, 0);
+	hub_motor_status = send_HubMotor(0, 0);
 	return false;
     }
 }
@@ -725,12 +756,12 @@ bool in_climb_process(int front_enc, int back_enc) {
 	climbForward_speed = CLIMBING_LEG_LENGTH * (sin(TO_RAD(prev_angle)) - sin(TO_RAD(encoderBack.angleDeg))) / dt; //unit: m/s,
 	climbForward_speed = climbForward_speed / (HUB_DIAMETER / 2);
 	//Convert hub speed into pulse/second
-	send_HubMotor(climbForward_speed, climbForward_speed);
+	hub_motor_status = send_HubMotor(climbForward_speed, climbForward_speed);
 	prev_angle = encoderBack.angleDeg;
 	prev_angle_tick = HAL_GetTick();
     }
     else if (is_lifting == true && speed[BACK_INDEX] == 0)
-	send_HubMotor(0, 0);
+	hub_motor_status = send_HubMotor(0, 0);
 
     if (!is_lifting)
 	first_loop = true;
