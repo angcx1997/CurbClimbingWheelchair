@@ -143,7 +143,9 @@ uint8_t motor_receive_buf[9];
 uint8_t receive_buf[15];
 Encoder_Feedback hub_encoder_feedback;
 
-TickType_t last_can_rx_t[2] = {0}; //To keep track of CAN bus reception
+TickType_t last_can_rx_t[2] = {
+	0
+}; //To keep track of CAN bus reception
 TickType_t last_hub_rx_t = 0; //Keep track of HUB reception activity
 TickType_t last_tf_mini_t = 0;
 
@@ -163,6 +165,7 @@ float backClimb_kp = 0.3, backClimb_ki = 0.004, backClimb_kd = 0.00001;
 
 //TF-mini
 uint16_t distance = 0;
+uint8_t usbBuffer[1];
 
 extern Operation_Mode lifting_mode;
 /* USER CODE END 0 */
@@ -405,6 +408,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
     //curb change detection callback
     if (huart->Instance == USART1) {
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 	//how many bytes received
 	uint8_t len = TFMINI_RX_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
 	distance = TFMINI_Plus_RcvData(pBuffer, len);
@@ -415,6 +419,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	    if (diff >= CURBHEIGHT) {
 		//stop the base wheel completely
 		lifting_mode = STOP;
+		xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
 		//send the message to usb port
 		USB_TransmitData(CURB_CHANGE);
 	    }
@@ -425,6 +430,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 	last_tf_mini_t = xTaskGetTickCountFromISR();
 	HAL_UART_Receive_DMA(&huart1, pBuffer, TFMINI_RX_SIZE);
+	/* Now the buffer is empty we can switch context if necessary. */
+	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
 
 }

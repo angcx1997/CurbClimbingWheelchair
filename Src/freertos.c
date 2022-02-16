@@ -54,6 +54,8 @@
 /* USER CODE BEGIN PD */
 //#define BUTTON_CONTROL
 #define ONE_BUTTON_CONTROL_CURB_CLIMBING
+//#define USB_CMD_CONTROL
+
 //#define DEBUGGING
 
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
@@ -145,7 +147,7 @@ extern TickType_t last_can_rx_t[2];
 extern TickType_t last_tf_mini_t;
 
 extern uint8_t pBuffer[TFMINI_RX_SIZE];
-
+extern uint8_t usbBuffer[1];
 uint32_t back_encoder_input = 0;
 uint8_t finish_climbing_flag = 0; //1 if climbing motion finish
 /* USER CODE END Variables */
@@ -242,6 +244,7 @@ void Task_NormalDrive(void *param) {
 	else if (lifting_mode == STOP) {
 	    MotorThrottle(&sabertooth_handler, 1, 0);
 	    MotorThrottle(&sabertooth_handler, 2, 0);
+	    xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
 	}
 	else {
 	    //If not in driving mode
@@ -544,6 +547,10 @@ void Task_Climbing(void *param) {
 
 #endif
 
+#ifdef USB_CMD_CONTROL
+
+#endif
+
 	//*****VERY IMPORTANT AND MUST NOT BE COMMENTED OUT**********************************//
 	//Safety check for to avoid the climbing leg overturn
 	if (encoderFront.encoder_pos < FRONT_FULL_ROTATION_ENC / 2) {
@@ -586,8 +593,20 @@ void Task_Climbing(void *param) {
 
 void Task_USB(void *param) {
     while (1) {
-	//USB Transmission and reception to PC
+	if (usbBuffer[0] == USB_STOP) {
+	    lifting_mode = STOP;
+	    xTaskNotify(task_normalDrive, 0, eNoAction);
+	}
+	else if (usbBuffer[0] == USB_MOVE) {
+	    lifting_mode = NORMAL;
+	    xTaskNotify(task_normalDrive, 0, eNoAction);
+	}
+	else if (usbBuffer[0] == USB_CLIMB_UP || usbBuffer[0] == USB_CLIMB_DOWN) {
+	    lifting_mode = LANDING;
+	}
+	usbBuffer[0] = 0;
 	vTaskDelay(1000);
+
     }
 }
 
