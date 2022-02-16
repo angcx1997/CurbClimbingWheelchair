@@ -36,6 +36,17 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
+typedef enum {
+    NORMAL = 0,
+    CLIMB_UP,
+    CLIMB_DOWN,
+    RETRACTION,
+    LANDING,
+    EMPTY,
+    IDLE,
+    STOP,
+    DANGER,
+} Operation_Mode;
 
 /* USER CODE END ET */
 

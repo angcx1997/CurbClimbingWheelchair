@@ -46,6 +46,7 @@
 #include "task.h"
 #include "queue.h"
 #include "timers.h"
+#include "tfmini.h"
 
 /* USER CODE END Includes */
 
@@ -120,6 +121,10 @@ QueueHandle_t encoder;
 
 EncoderHandle encoderBack;
 EncoderHandle encoderFront;
+
+//Buffer to receive uart tf-mini data
+uint8_t pBuffer[TFMINI_RX_SIZE];
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -140,6 +145,7 @@ Encoder_Feedback hub_encoder_feedback;
 
 TickType_t last_can_rx_t[2] = {0}; //To keep track of CAN bus reception
 TickType_t last_hub_rx_t = 0; //Keep track of HUB reception activity
+TickType_t last_tf_mini_t = 0;
 
 //Front Climbing Position Control
 struct pid_controller frontClimb_ctrl;
@@ -155,6 +161,10 @@ float backClimb_input = 0, backClimb_output = 0;
 float backClimb_setpoint = 0;
 float backClimb_kp = 0.3, backClimb_ki = 0.004, backClimb_kd = 0.00001;
 
+//TF-mini
+uint16_t distance = 0;
+
+extern Operation_Mode lifting_mode;
 /* USER CODE END 0 */
 
 /**
@@ -394,47 +404,30 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 //    }
 
     //curb change detection callback
-//    if (huart->Instance == USART1) {
-//	//how many bytes received
-//	uint8_t len = RX_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
-//	uint16_t distance = TFMINI_Plus_RcvData(pBuffer, len);
-//	//send the received data;
-//	if (distance != 0) {
-//	    uint16_t distanceNoNoise = Noise_loop(distance);
-//	    uint16_t diff = detectCurb_down(distanceNoNoise);
-//	    if (diff >= CURBHEIGHT) {
-//		//stop the base wheel completely
-//		MotorThrottle(&sabertoothf_handler, 1, 0);
-//		MotorThrottle(&sabertooth_handler, 2, 0);
-//		lifting_mode = STOP;
-//		//send the message to usb port
-//		USB_TransmitData(CURB_CHANGE);
-//	    }
-//	    else {
-//		USB_TransmitData(USB_MOVE);
-//	    }
-//	}
-//	HAL_UART_Receive_DMA(&huart1, pBuffer, RX_SIZE);
-//	last_uart_tx_time = HAL_GetTick();
-//    }
+    if (huart->Instance == USART1) {
+	//how many bytes received
+	uint8_t len = TFMINI_RX_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
+	distance = TFMINI_Plus_RcvData(pBuffer, len);
+	//send the received data;
+	if (distance != 0) {
+	    uint16_t distanceNoNoise = Noise_loop(distance);
+	    uint16_t diff = detectCurb_down(distanceNoNoise);
+	    if (diff >= CURBHEIGHT) {
+		//stop the base wheel completely
+		lifting_mode = STOP;
+		//send the message to usb port
+		USB_TransmitData(CURB_CHANGE);
+	    }
+	    else {
+		USB_TransmitData(USB_MOVE);
+	    }
+	}
+
+	last_tf_mini_t = xTaskGetTickCountFromISR();
+	HAL_UART_Receive_DMA(&huart1, pBuffer, TFMINI_RX_SIZE);
+    }
 
 }
-
-/**
-  * @brief  Tx Transfer completed callbacks.
-  * @param  huart  Pointer to a UART_HandleTypeDef structure that contains
-  *                the configuration information for the specified UART module.
-  * @retval None
-  */
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
-{
-  /* Prevent unused argument(s) compilation warning */
-  UNUSED(huart);
-  /* NOTE: This function should not be modified, when the callback is needed,
-           the HAL_UART_TxCpltCallback could be implemented in the user file
-   */
-}
-
 
 /* USER CODE END 4 */
 
@@ -448,6 +441,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 void StartDefaultTask(void *argument) {
     /* init code for USB_DEVICE */
     MX_USB_DEVICE_Init();
+
     /* USER CODE BEGIN 5 */
     /* Infinite loop */
     for (;;) {

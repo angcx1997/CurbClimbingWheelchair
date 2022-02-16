@@ -42,6 +42,7 @@
 #include "joystick.h"
 #include "differentialDrive.h"
 #include "DifferentialDrivetoSabertooth.h"
+#include "tfmini.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -67,17 +68,6 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-typedef enum {
-    NORMAL = 0,
-    CLIMB_UP,
-    CLIMB_DOWN,
-    RETRACTION,
-    LANDING,
-    EMPTY,
-    IDLE,
-    STOP,
-    DANGER,
-} Operation_Mode;
 
 const float forward_distance = BASE_LENGTH; // (in meter) distance to travel during climbing process by hub
 /* USER CODE END PM */
@@ -152,6 +142,9 @@ extern float backClimb_setpoint;
 
 extern TickType_t last_hub_rx_t;
 extern TickType_t last_can_rx_t[2];
+extern TickType_t last_tf_mini_t;
+
+extern uint8_t pBuffer[TFMINI_RX_SIZE];
 
 uint32_t back_encoder_input = 0;
 uint8_t finish_climbing_flag = 0; //1 if climbing motion finish
@@ -246,6 +239,10 @@ void Task_NormalDrive(void *param) {
 		MotorThrottle(&sabertooth_handler, 2, 0);
 	    }
 	}
+	else if (lifting_mode == STOP) {
+	    MotorThrottle(&sabertooth_handler, 1, 0);
+	    MotorThrottle(&sabertooth_handler, 2, 0);
+	}
 	else {
 	    //If not in driving mode
 	    MotorThrottle(&sabertooth_handler, 1, 0);
@@ -275,7 +272,9 @@ void Task_Climb_Sensor(void *param) {
     TickType_t tick = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(50); //execution period
 
+    //Initialize sensor and reception
     ENCODER_Init();
+    HAL_UART_Receive_DMA(&huart1, pBuffer, TFMINI_RX_SIZE);
     while (1) {
 	ENCODER_Get_Angle(&encoderBack);
 	ENCODER_Get_Angle(&encoderFront);
@@ -300,7 +299,9 @@ void Task_Climb_Sensor(void *param) {
 	    xTaskNotify(task_control, 0, eNoAction);
 	}
 
-
+	if (xTaskGetTickCount() - last_tf_mini_t > 200) {
+	    HAL_UART_Receive_DMA(&huart1, pBuffer, TFMINI_RX_SIZE);
+	}
 
 	vTaskDelayUntil(&tick, period);
     }
@@ -514,7 +515,7 @@ void Task_Climbing(void *param) {
 
 	    if (finish_climbing_flag == true) {
 		emBrakeMotor(0);
-		if (!(climbingForward(forward_distance ))) {
+		if (!(climbingForward(forward_distance))) {
 		    emBrakeMotor(1);
 		    finish_climbing_flag = false;
 		    lifting_mode = RETRACTION;
@@ -585,6 +586,7 @@ void Task_Climbing(void *param) {
 
 void Task_USB(void *param) {
     while (1) {
+	//USB Transmission and reception to PC
 	vTaskDelay(1000);
     }
 }

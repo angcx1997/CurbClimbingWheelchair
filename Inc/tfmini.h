@@ -12,7 +12,7 @@
 
 #define TFMINI_HEADER    0x59
 #define TFMINI_SIZE      9
-#define RX_SIZE          9
+#define TFMINI_RX_SIZE          9
 
 #define CURBHEIGHT       0xF
 

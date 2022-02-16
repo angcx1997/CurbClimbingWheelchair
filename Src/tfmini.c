@@ -13,13 +13,11 @@
 #include "usbd_cdc_if.h"
 #include "usb_device.h"
 
-extern uint8_t cmd;
-
 void USB_TransmitData(uint8_t command)
 {
-	cmd = command;
-	CDC_Transmit_FS((uint8_t*)&cmd, 1);
+	CDC_Transmit_FS((uint8_t*)&command, 1);
 }
+
 uint16_t prev_dist = 0;
 
 uint16_t TFMINI_Plus_RcvData(uint8_t *pBuffer, uint8_t length)
