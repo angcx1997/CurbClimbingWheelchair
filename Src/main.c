@@ -141,6 +141,20 @@ Encoder_Feedback hub_encoder_feedback;
 TickType_t last_can_rx_t[2] = {0}; //To keep track of CAN bus reception
 TickType_t last_hub_rx_t = 0; //Keep track of HUB reception activity
 
+//Front Climbing Position Control
+struct pid_controller frontClimb_ctrl;
+PID_t frontClimb_pid;
+float frontClimb_input = 0, frontClimb_output = 0;
+float frontClimb_setpoint = 0;
+float frontClimb_kp = 0.35, frontClimb_ki = 0.003, frontClimb_kd = 0.00001;
+
+//Back Climbing Position Control
+struct pid_controller backClimb_ctrl;
+PID_t backClimb_pid;
+float backClimb_input = 0, backClimb_output = 0;
+float backClimb_setpoint = 0;
+float backClimb_kp = 0.3, backClimb_ki = 0.004, backClimb_kd = 0.00001;
+
 /* USER CODE END 0 */
 
 /**
@@ -170,6 +184,20 @@ int main(void) {
     /* Initialize all configured peripherals */
     /* USER CODE BEGIN 2 */
     Peripheral_Init();
+
+    //Initialize front and back climbing position controller
+    frontClimb_pid = pid_create(&frontClimb_ctrl, &frontClimb_input, &frontClimb_output, &frontClimb_setpoint,
+	    frontClimb_kp, frontClimb_ki, frontClimb_kd);
+    pid_limits(frontClimb_pid, -80, 80);
+    pid_sample(frontClimb_pid, 1);
+    pid_auto(frontClimb_pid);
+
+    backClimb_pid = pid_create(&backClimb_ctrl, &backClimb_input, &backClimb_output, &backClimb_setpoint, backClimb_kp,
+	    backClimb_ki, backClimb_kd);
+    pid_limits(backClimb_pid, -80, 80);
+    pid_sample(backClimb_pid, 1);
+    pid_auto(backClimb_pid);
+
 //    HAL_UART_Receive_DMA(&huart3, receive_buf, 15);
     /* USER CODE END 2 */
 

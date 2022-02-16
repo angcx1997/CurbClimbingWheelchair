@@ -67,13 +67,13 @@ HAL_StatusTypeDef send_HubMotor(float m1_ang_speed, float m2_ang_speed) {
 
     send_buf[14] = (uint8_t) (sum & 0x00FF);
 
-    status = HAL_UART_Transmit(&huart3, send_buf, 15,1);
+    status = HAL_UART_Transmit(&huart3, send_buf, 15,10);
     if (status != HAL_OK)
 	return status;
 
     status = HAL_UART_Receive_DMA(&huart3, receive_buf, 15);
-//    if (status != HAL_OK)
-//	return status;
+    if (status != HAL_OK)
+	return status;
     return HAL_OK;
 }
 
