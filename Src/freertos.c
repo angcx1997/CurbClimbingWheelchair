@@ -300,6 +300,8 @@ void Task_Climb_Sensor(void *param) {
 	    xTaskNotify(task_control, 0, eNoAction);
 	}
 
+
+
 	vTaskDelayUntil(&tick, period);
     }
 }
@@ -560,6 +562,7 @@ void Task_Climbing(void *param) {
 	    if (encoderBack.encoder_pos < MIN_BACK_ALLOWABLE_ENC && speed[BACK_INDEX] < 0)
 		speed[BACK_INDEX] = 0;
 	}
+	//If lifting mode is normal, notify driving task
 	if (lifting_mode == NORMAL) {
 	    speed[FRONT_INDEX] = 0;
 	    speed[BACK_INDEX] = 0;
