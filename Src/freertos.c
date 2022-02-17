@@ -23,6 +23,7 @@
 #include "task.h"
 #include "main.h"
 #include "queue.h"
+#include "timers.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -109,6 +110,8 @@ extern TaskHandle_t task_usb;
 
 extern QueueHandle_t queue_joystick;
 extern QueueHandle_t encoder;
+
+extern TimerHandle_t timer_buzzer;
 
 extern EncoderHandle encoderBack;
 extern EncoderHandle encoderFront;
@@ -236,6 +239,10 @@ void Task_NormalDrive(void *param) {
     while (1) {
 	if (lifting_mode == NORMAL) {
 	    LED_Mode_Configuration(NORMAL);
+	    if (xTimerIsTimerActive(timer_buzzer) == pdTRUE){
+		xTimerStop(timer_buzzer, 1);
+		HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
+	    }
 	    if (joystick_ptr != NULL) {
 		computeSpeed(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
 		differentialDrivetoSabertoothOutputAdapter(&differential_drive_handler, &sabertooth_handler);
@@ -256,6 +263,8 @@ void Task_NormalDrive(void *param) {
 		joystick_ptr->y = (joystick_ptr->y > 0) ? 0 : joystick_ptr->y;
 		computeSpeed(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
 		differentialDrivetoSabertoothOutputAdapter(&differential_drive_handler, &sabertooth_handler);
+		if (xTimerIsTimerActive(timer_buzzer) == pdFALSE)
+		    xTimerStart(timer_buzzer, 1);
 	    }
 	}
 	else {
@@ -612,7 +621,7 @@ void Task_USB(void *param) {
 	    lifting_mode = STOP;
 	    xTaskNotify(task_normalDrive, 0, eNoAction);
 	}
-	else if (usbBuffer[0] == USB_MOVE ) {
+	else if (usbBuffer[0] == USB_MOVE) {
 	    lifting_mode = NORMAL;
 	    xTaskNotify(task_normalDrive, 0, eNoAction);
 	}

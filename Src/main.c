@@ -118,6 +118,7 @@ TaskHandle_t task_usb;
 QueueHandle_t queue_joystick;
 QueueHandle_t encoder;
 
+TimerHandle_t timer_buzzer;
 EncoderHandle encoderBack;
 EncoderHandle encoderFront;
 
@@ -131,7 +132,7 @@ void SystemClock_Config(void);
 void StartDefaultTask(void *argument);
 
 /* USER CODE BEGIN PFP */
-
+void Buzzer_Timer_Callback(TimerHandle_t xTimer);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -229,6 +230,7 @@ int main(void) {
 
     /* USER CODE BEGIN RTOS_TIMERS */
     /* start timers, add new ones, ... */
+    timer_buzzer = xTimerCreate("Buzzer Timer", pdMS_TO_TICKS(500), pdTRUE, NULL, Buzzer_Timer_Callback);
     /* USER CODE END RTOS_TIMERS */
 
     /* USER CODE BEGIN RTOS_QUEUES */
@@ -446,7 +448,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 //				prev_dist = 0;
 	}
 
-	last_tf_mini_t = xTaskGeytTickCountFromISR();
+	last_tf_mini_t = xTaskGetTickCountFromISR();
 	HAL_UART_Receive_DMA(&huart1, pBuffer, TFMINI_RX_SIZE);
 	/* Now the buffer is empty we can switch context if necessary. */
 	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
@@ -454,6 +456,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 }
 
+void Buzzer_Timer_Callback(TimerHandle_t xTimer)
+{
+    HAL_GPIO_TogglePin(Buzzer_GPIO_Port, Buzzer_Pin);
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */

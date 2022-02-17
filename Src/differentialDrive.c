@@ -114,8 +114,8 @@ void computeSpeed(differentialDrive_Handler* dd_handler, int XValue, int YValue,
 	float y = ((float)YValue / COMPUTERANGE);
 
 	//Convert input into exponential form for finer control at crowded area
-//	x = x * x * x;
-//	y = y * y * y;
+	x = x * x * x;
+	y = y * y * y;
 
 	if (0.5 * x > 0.1)
 		x = 0.1 + (0.5 * x - 0.1) * 0.5;
