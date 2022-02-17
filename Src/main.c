@@ -57,7 +57,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MAX(x, y) (((x) > (y)) ? (x) : (y))
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -431,7 +430,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		//send the message to usb port
 		USB_TransmitData(CURB_CHANGE);
 	    }
-	    else {
+	    else if (distanceNoNoise < 20 && lifting_mode == CURB_DETECTED) {
+		//stop the base wheel completely
+		lifting_mode = NORMAL;
+		xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
+		USB_TransmitData(USB_MOVE);
+	    }
+	    else if (lifting_mode == NORMAL){
 		USB_TransmitData(USB_MOVE);
 	    }
 
@@ -441,7 +446,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 //				prev_dist = 0;
 	}
 
-	last_tf_mini_t = xTaskGetTickCountFromISR();
+	last_tf_mini_t = xTaskGeytTickCountFromISR();
 	HAL_UART_Receive_DMA(&huart1, pBuffer, TFMINI_RX_SIZE);
 	/* Now the buffer is empty we can switch context if necessary. */
 	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);

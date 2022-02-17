@@ -31,7 +31,8 @@ enum{
 	USB_STOP = 0x02,
 	USB_MOVE = 0x03,
 	USB_CLIMB_UP = 0x04,
-	USB_CLIMB_DOWN = 0x05
+	USB_CLIMB_DOWN = 0x05,
+	USB_CURB_DETECTED = 0x06
 };
 
 void USB_TransmitData(uint8_t command);

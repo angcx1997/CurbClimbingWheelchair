@@ -612,8 +612,12 @@ void Task_USB(void *param) {
 	    lifting_mode = STOP;
 	    xTaskNotify(task_normalDrive, 0, eNoAction);
 	}
-	else if (usbBuffer[0] == USB_MOVE) {
+	else if (usbBuffer[0] == USB_MOVE ) {
 	    lifting_mode = NORMAL;
+	    xTaskNotify(task_normalDrive, 0, eNoAction);
+	}
+	else if (usbBuffer[0] == USB_CURB_DETECTED) {
+	    lifting_mode = CURB_DETECTED;
 	    xTaskNotify(task_normalDrive, 0, eNoAction);
 	}
 	else if (usbBuffer[0] == USB_CLIMB_UP || usbBuffer[0] == USB_CLIMB_DOWN) {
