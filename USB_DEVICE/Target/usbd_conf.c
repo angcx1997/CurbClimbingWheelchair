@@ -92,7 +92,7 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef* pcdHandle)
     __HAL_RCC_USB_OTG_FS_CLK_ENABLE();
 
     /* Peripheral interrupt init */
-    HAL_NVIC_SetPriority(OTG_FS_IRQn, 5, 0);
+    HAL_NVIC_SetPriority(OTG_FS_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(OTG_FS_IRQn);
   /* USER CODE BEGIN USB_OTG_FS_MspInit 1 */
 
@@ -592,10 +592,10 @@ USBD_StatusTypeDef USBD_LL_PrepareReceive(USBD_HandleTypeDef *pdev, uint8_t ep_a
 }
 
 /**
-  * @brief  Returns the last transferred packet size.
+  * @brief  Returns the last transfered packet size.
   * @param  pdev: Device handle
   * @param  ep_addr: Endpoint number
-  * @retval Received Data Size
+  * @retval Recived Data Size
   */
 uint32_t USBD_LL_GetRxDataSize(USBD_HandleTypeDef *pdev, uint8_t ep_addr)
 {
@@ -634,7 +634,7 @@ void USBD_LL_Delay(uint32_t Delay)
 }
 
 /**
-  * @brief  Returns the USB status depending on the HAL status:
+  * @brief  Retuns the USB status depending on the HAL status:
   * @param  hal_status: HAL status
   * @retval USB status
   */

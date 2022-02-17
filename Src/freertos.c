@@ -43,6 +43,7 @@
 #include "differentialDrive.h"
 #include "DifferentialDrivetoSabertooth.h"
 #include "tfmini.h"
+#include "usb_device.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -52,8 +53,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define BUTTON_CONTROL
-//#define ONE_BUTTON_CONTROL_CURB_CLIMBING
+//#define BUTTON_CONTROL
+#define USB_CONTROL
+#define ONE_BUTTON_CONTROL_CURB_CLIMBING
 //#define USB_CMD_CONTROL
 
 //#define DEBUGGING
@@ -150,6 +152,8 @@ extern uint8_t pBuffer[TFMINI_RX_SIZE];
 extern uint8_t usbBuffer[1];
 uint32_t back_encoder_input = 0;
 uint8_t finish_climbing_flag = 0; //1 if climbing motion finish
+
+uint8_t usb_climb_state = 0;
 /* USER CODE END Variables */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -199,6 +203,7 @@ void Task_Keyboard(void *param) {
 	GPIO_Digital_Filtered_Input(&button2, 30);
 	GPIO_Digital_Filtered_Input(&button3, 30);
 
+#ifndef USB_CONTROL
 	if (button1.state == 1)
 	    BITSET(button_state, 0);
 	else
@@ -213,7 +218,7 @@ void Task_Keyboard(void *param) {
 	    BITSET(button_state, 2);
 	else
 	    BITCLEAR(button_state, 2);
-
+#endif
 	vTaskDelayUntil(&tick, period);
     }
 }
@@ -394,7 +399,7 @@ void Task_Climbing(void *param) {
 
 #ifdef ONE_BUTTON_CONTROL_CURB_CLIMBING
 	//when button3 is pressed, Extend climbing wheel until both wheel touches the ground
-	if ((BITCHECK(button_state,2) || button_prev_state == 1) && climb_first_iteration == 1) {
+	if (((BITCHECK(button_state,2) || button_prev_state == 1) || usb_climb_state == 1) && climb_first_iteration == 1) {
 	    button_prev_state = 1;
 	    //Put both leg to same initial position for easier curb climbing mode detection
 	    if (abs(encoderFront.signed_encoder_pos) >= 50 || abs(encoderBack.signed_encoder_pos) >= 50) {
@@ -407,6 +412,7 @@ void Task_Climbing(void *param) {
 		speed[BACK_INDEX] = 0;
 		lifting_mode = LANDING;
 		button_prev_state = 0;
+		usb_climb_state = 0;
 		vTaskDelay(pdMS_TO_TICKS(300));
 	    }
 	}
@@ -574,6 +580,7 @@ void Task_Climbing(void *param) {
 	if (lifting_mode == NORMAL) {
 	    speed[FRONT_INDEX] = 0;
 	    speed[BACK_INDEX] = 0;
+	    climb_first_iteration = 1;
 	    xTaskNotify(task_normalDrive, 0, eNoAction);
 	}
 	//**********************************************************************************//
@@ -602,9 +609,10 @@ void Task_USB(void *param) {
 	    xTaskNotify(task_normalDrive, 0, eNoAction);
 	}
 	else if (usbBuffer[0] == USB_CLIMB_UP || usbBuffer[0] == USB_CLIMB_DOWN) {
-	    lifting_mode = LANDING;
+	    usb_climb_state = 1;
 	}
 	usbBuffer[0] = 0;
+
 	vTaskDelay(1000);
 
     }

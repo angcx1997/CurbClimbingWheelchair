@@ -13,6 +13,7 @@
 #include "usbd_cdc_if.h"
 #include "usb_device.h"
 
+
 void USB_TransmitData(uint8_t command)
 {
 	CDC_Transmit_FS((uint8_t*)&command, 1);
