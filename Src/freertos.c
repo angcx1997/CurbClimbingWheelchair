@@ -251,6 +251,13 @@ void Task_NormalDrive(void *param) {
 	    MotorThrottle(&sabertooth_handler, 2, 0);
 	    xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
 	}
+	else if (lifting_mode == CURB_DETECTED) {
+	    if (joystick_ptr != NULL) {
+		joystick_ptr->y = (joystick_ptr->y > 0) ? 0 : joystick_ptr->y;
+		computeSpeed(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
+		differentialDrivetoSabertoothOutputAdapter(&differential_drive_handler, &sabertooth_handler);
+	    }
+	}
 	else {
 	    //If not in driving mode
 	    MotorThrottle(&sabertooth_handler, 1, 0);
@@ -399,7 +406,8 @@ void Task_Climbing(void *param) {
 
 #ifdef ONE_BUTTON_CONTROL_CURB_CLIMBING
 	//when button3 is pressed, Extend climbing wheel until both wheel touches the ground
-	if (((BITCHECK(button_state,2) || button_prev_state == 1) || usb_climb_state == 1) && climb_first_iteration == 1) {
+	if (((BITCHECK(button_state,2) || button_prev_state == 1) || usb_climb_state == 1)
+		&& climb_first_iteration == 1) {
 	    button_prev_state = 1;
 	    //Put both leg to same initial position for easier curb climbing mode detection
 	    if (abs(encoderFront.signed_encoder_pos) >= 50 || abs(encoderBack.signed_encoder_pos) >= 50) {
