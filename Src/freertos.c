@@ -52,8 +52,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-//#define BUTTON_CONTROL
-#define ONE_BUTTON_CONTROL_CURB_CLIMBING
+#define BUTTON_CONTROL
+//#define ONE_BUTTON_CONTROL_CURB_CLIMBING
 //#define USB_CMD_CONTROL
 
 //#define DEBUGGING

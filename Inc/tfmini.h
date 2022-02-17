@@ -14,15 +14,15 @@
 #define TFMINI_SIZE      9
 #define TFMINI_RX_SIZE          9
 
-#define CURBHEIGHT       0xF
+#define CURBHEIGHT       12
 
 #define ALPHA    0.20
 
-float EMA_Function(float alpha, uint16_t latest, uint16_t stored);
+//float EMA_Function(float alpha, uint16_t latest, uint16_t stored);
 
 uint16_t Noise_loop(uint16_t distance);
 
-uint16_t detectCurb_down(uint16_t distance);
+int detectCurb_down(uint16_t distance);
 
 uint16_t TFMINI_Plus_RcvData(uint8_t *pBuffer, uint8_t length);
 

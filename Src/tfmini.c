@@ -18,7 +18,8 @@ void USB_TransmitData(uint8_t command)
 	CDC_Transmit_FS((uint8_t*)&command, 1);
 }
 
-uint16_t prev_dist = 0;
+int prev_dist = 0;//Calculate curb difference
+uint16_t prev_dis = 0; //EMA
 
 uint16_t TFMINI_Plus_RcvData(uint8_t *pBuffer, uint8_t length)
 {
@@ -49,21 +50,17 @@ uint16_t TFMINI_Plus_RcvData(uint8_t *pBuffer, uint8_t length)
 }
 
 
-uint16_t detectCurb_down(uint16_t distance)
+int detectCurb_down(uint16_t distance)
 {
-	uint16_t diff = 0;
+	int diff = 0;
 
 	if(prev_dist == 0){
 		prev_dist = distance;
 		return 0;
 	}
 
-	if(distance > prev_dist){
-		diff = distance - prev_dist;
-	}else{
-		diff = prev_dist - distance;
-	}
-	prev_dist = distance;
+	diff =(int)distance - prev_dist;
+	prev_dist = (int)distance;
 
 	return diff;
 }
@@ -71,19 +68,19 @@ uint16_t detectCurb_down(uint16_t distance)
 uint16_t Noise_loop(uint16_t distance)
 {
 
-	int ema = 0;
-	int ema_ema = 0;
+	if(prev_dis == 0){
+			prev_dis = distance;
+			return 0;
+		}
 
-	ema = EMA_Function(ALPHA, distance, ema);
-	ema_ema = EMA_Function(ALPHA, ema, ema_ema);
-
-
-
-	return (2*ema-ema_ema);
+	uint16_t newDis = prev_dis*ALPHA + distance*(1-ALPHA);
+	prev_dis = distance;
+	return newDis;
 }
-
+/*
  float EMA_Function(float alpha, uint16_t latest, uint16_t stored)
 {
 	return (alpha*latest + (1.0f-alpha)*stored);
 
 }
+*/
