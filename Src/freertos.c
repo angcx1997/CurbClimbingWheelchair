@@ -157,6 +157,8 @@ uint32_t back_encoder_input = 0;
 uint8_t finish_climbing_flag = 0; //1 if climbing motion finish
 
 uint8_t usb_climb_state = 0;
+
+extern uint8_t buzzer_expiry_count;
 /* USER CODE END Variables */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -239,7 +241,7 @@ void Task_NormalDrive(void *param) {
     while (1) {
 	if (lifting_mode == NORMAL) {
 	    LED_Mode_Configuration(NORMAL);
-	    if (xTimerIsTimerActive(timer_buzzer) == pdTRUE){
+	    if (xTimerIsTimerActive(timer_buzzer) == pdTRUE) {
 		xTimerStop(timer_buzzer, 1);
 		HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
 	    }
@@ -256,15 +258,22 @@ void Task_NormalDrive(void *param) {
 	else if (lifting_mode == STOP) {
 	    MotorThrottle(&sabertooth_handler, 1, 0);
 	    MotorThrottle(&sabertooth_handler, 2, 0);
+//	    if (xTimerIsTimerActive(timer_buzzer) == pdFALSE) {
+//		buzzer_expiry_count = 1; //beep for 1 second
+//		xTimerStart(timer_buzzer, 1);
+//	    }
 	    xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
+
 	}
 	else if (lifting_mode == CURB_DETECTED) {
 	    if (joystick_ptr != NULL) {
 		joystick_ptr->y = (joystick_ptr->y > 0) ? 0 : joystick_ptr->y;
 		computeSpeed(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
 		differentialDrivetoSabertoothOutputAdapter(&differential_drive_handler, &sabertooth_handler);
-		if (xTimerIsTimerActive(timer_buzzer) == pdFALSE)
+		if (xTimerIsTimerActive(timer_buzzer) == pdFALSE) {
+		    buzzer_expiry_count = 0;
 		    xTimerStart(timer_buzzer, 1);
+		}
 	    }
 	}
 	else {

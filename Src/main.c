@@ -119,6 +119,8 @@ QueueHandle_t queue_joystick;
 QueueHandle_t encoder;
 
 TimerHandle_t timer_buzzer;
+uint8_t buzzer_expiry_count = 0; //Zero means no expiry count
+
 EncoderHandle encoderBack;
 EncoderHandle encoderFront;
 
@@ -438,7 +440,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
 		USB_TransmitData(USB_MOVE);
 	    }
-	    else if (lifting_mode == NORMAL){
+	    else if (lifting_mode == NORMAL) {
 		USB_TransmitData(USB_MOVE);
 	    }
 
@@ -456,9 +458,17 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 }
 
-void Buzzer_Timer_Callback(TimerHandle_t xTimer)
-{
+void Buzzer_Timer_Callback(TimerHandle_t xTimer) {
+    static uint8_t count = 0;
+    count = (buzzer_expiry_count == 0) ? 0 : count++;
     HAL_GPIO_TogglePin(Buzzer_GPIO_Port, Buzzer_Pin);
+
+//    if (count >= buzzer_expiry_count*2)
+//	/* Do not use a block time if calling a timer API function
+//	 from a timer callback function, as doing so could cause a
+//	 deadlock! */
+//	xTimerStop(xTimer, 0);
+
 }
 /* USER CODE END 4 */
 
