@@ -72,7 +72,7 @@ const uint32_t MIN_FRONT_ALLOWABLE_ENC = 6600; //6600
 const uint32_t MAX_FRONT_CLIMBING_ENC = 1950; //used for climbing up
 const uint32_t MAX_BACK_ALLOWABLE_ENC = 3000;
 const uint32_t MIN_BACK_ALLOWABLE_ENC = 7500;
-const uint32_t MAX_BACK_CLIMBING_ENC = 1850; //used when climbing down
+const uint32_t MAX_BACK_CLIMBING_ENC = 1950; //used when climbing down
 const uint32_t FRONT_FULL_ROTATION_ENC = 4096 * FRONT_GEAR_RATIO;
 const uint32_t BACK_FULL_ROTATION_ENC = 4096 * BACK_GEAR_RATIO;
 /* USER CODE END PM */
@@ -425,8 +425,24 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	    // diff = detectCurb_down(distanceNoNoise);
 	    if (prev_dist == 0)
 		prev_dist = distanceNoNoise;
-
+/*
 	    diff = distanceNoNoise - prev_dist;
+	    if(diff >= 15 && lifting_mode == NORMAL){
+	    	//STOP the base wheel
+	    	lifting_mode = STOP;
+	    	xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
+	    	USB_TransmitData(CURB_CHANGE);
+	    }
+	    else if (diff >= 15 && lifting_mode == CURB_DETECTED){
+	    	//stop the base wheel
+	    	lifting_mode = NORMAL;
+	    	xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
+	    	USB_TransmitData(USB_MOVE);
+	    }
+	    else if(lifting_mode == NORMAL){
+	    	USB_TransmitData(USB_MOVE);
+	    }
+*/
 	    if (distanceNoNoise >= 20 && lifting_mode == NORMAL) {
 		//stop the base wheel completely
 		lifting_mode = STOP;
@@ -435,7 +451,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		USB_TransmitData(CURB_CHANGE);
 	    }
 	    else if (distanceNoNoise < 20 && lifting_mode == CURB_DETECTED) {
-		//stop the base wheel completely
+		//start the base wheel
 		lifting_mode = NORMAL;
 		xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
 		USB_TransmitData(USB_MOVE);
