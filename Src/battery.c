@@ -38,21 +38,27 @@ enum Command{				/*!< Indicate what reply want from hardware >*/
 	BATTERY_SERIAL_NUMBER
 };
 
+/*
+ * brief Calculate checksum from specific range
+ * param buf		array pointer
+ * param start_pos 	initial position to start calculation
+ * param end_pos 	ending position for calculation
+ */
 static uint16_t CalculateCheckSum(uint8_t buf[], int start_pos, int end_pos);
 
-void BatteryInit(batteryHandler* battery_handler, UART_HandleTypeDef* huart){
+void Battery_Init(batteryHandler* battery_handler, UART_HandleTypeDef* huart){
 	battery_handler->huart = huart;
 	memset(&battery_handler->battery_info, 0, sizeof(battery_handler->battery_info));
 	battery_handler->battery_info.NTC_content = NULL;
 }
 
-void BatteryDeInit(batteryHandler* battery_handler){
+void Battery_DeInit(batteryHandler* battery_handler){
 	free(battery_handler->huart);
 	free(battery_handler->battery_info.NTC_content);
 
 }
 
-void getBatteryState(batteryHandler* battery_handler){
+void Battery_GetState(batteryHandler* battery_handler){
 	uint8_t send_buf[7] = {0};
 	send_buf[0] = SOI;
 	send_buf[1] = BATTERY_READ;
@@ -65,7 +71,7 @@ void getBatteryState(batteryHandler* battery_handler){
 	HAL_UART_Transmit_DMA(battery_handler->huart, send_buf, sizeof(send_buf));
 }
 
-void ReadBatteryState(batteryHandler* battery_handler, uint8_t receive_buf[]){
+void Battery_ReadState(batteryHandler* battery_handler, uint8_t receive_buf[]){
 	//Last index number in buffer
 	uint8_t end_idx = REPLY_INFO_IDX + receive_buf[REPLY_LENGTH_IDX] + 2;
 	//check receive start, r/w state. flag and end buffer
