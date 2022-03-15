@@ -18,6 +18,7 @@ union UInt32UInt8
 	uint8_t					b8[4];
 };
 
+/*Vertical axis is the reference axis*/
 typedef struct
 {
   CAN_HandleTypeDef*    hcan;
@@ -25,9 +26,9 @@ typedef struct
   CAN_TxHeaderTypeDef canTxHeader;
   uint32_t canMailbox;
   union UInt32UInt8 angle32Bit;
-  float angleDeg;
-  uint32_t encoder_pos;
-  int signed_encoder_pos;
+  float angleDeg; 				/*!<Angle with respect to vertical axis>*/
+  uint32_t encoder_pos;			/*!<Preprocessed encoder position, (24turn * 4096ppr)>*/
+  int signed_encoder_pos;		/*!<Encoder position with respect to vertical axis>*/
   uint8_t sendData[4];
   uint8_t rawRead[8];
 	
@@ -54,8 +55,6 @@ void ENCODER_Get_AllAngles(void);
 void ENCODER_SetBaudRate(EncoderHandle* Encoder_ptr);
 
 extern EncoderHandle encoderBack, encoderFront;
-extern CAN_FilterTypeDef canfil_1;
-extern CAN_FilterTypeDef canfil_2;
 
 
 //Paste this under Rx interrupt function to sort incoming messages 

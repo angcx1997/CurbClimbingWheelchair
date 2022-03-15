@@ -5,12 +5,9 @@
 
 #include "encoder.h"
 
-
 EncoderHandle encoderBack, encoderFront;
 CAN_HandleTypeDef hcan1;
 CAN_HandleTypeDef hcan2;
-//uint8_t incoming[8];
-//CAN_RxHeaderTypeDef RxHeader;
 
 void ENCODER_Init(void)
 {
@@ -21,7 +18,6 @@ void ENCODER_Init(void)
 	//Set Tx header for each encoder handle
 	ENCODER_Set_TxHeader(&encoderBack, ENC_ADDR_LEFT);
 	ENCODER_Set_TxHeader(&encoderFront, ENC_ADDR_RIGHT);
-
 }
 
 void ENCODER_Sort_Incoming(uint8_t* incoming_array, EncoderHandle* Encoder_ptr){
@@ -68,15 +64,7 @@ void ENCODER_Get_Angle(EncoderHandle* Encoder_ptr){
 	Encoder_ptr->angle32Bit.b8[1] = Encoder_ptr->rawRead[4];
 	Encoder_ptr->angle32Bit.b8[2] = Encoder_ptr->rawRead[5];
 	Encoder_ptr->angle32Bit.b8[3] = Encoder_ptr->rawRead[6];
-
-	//Get the outer gear encoder position
-	//Gear ration from inner to outer gear is 1:2. Therefore, (2*4096=)8192 is used
-//	Encoder_ptr->encoder_pos = (Encoder_ptr->rawRead[3] + (Encoder_ptr->rawRead[4] << 8) + (Encoder_ptr->rawRead[5] << 16)) ; //Get single turn encoder reading
 	Encoder_ptr->encoder_pos = (Encoder_ptr->rawRead[3] + (Encoder_ptr->rawRead[4] << 8) + (Encoder_ptr->rawRead[5] << 16)); //Get single turn encoder reading
-
-	//Convert from encoder position to angle in degree
-//	Encoder_ptr->angleDeg = (Encoder_ptr->encoder_pos * 360 /8192) ; //Get encoder angle
-
 }
 
 void ENCODER_Set_ZeroPosition(EncoderHandle* Encoder_ptr){
@@ -84,9 +72,7 @@ void ENCODER_Set_ZeroPosition(EncoderHandle* Encoder_ptr){
 	Encoder_ptr->sendData[1] = Encoder_ptr->canTxHeader.StdId;
 	Encoder_ptr->sendData[2] = 0x06;
 	Encoder_ptr->sendData[3] = 0x00;
-	
 	HAL_CAN_AddTxMessage(Encoder_ptr->hcan, &(Encoder_ptr->canTxHeader), Encoder_ptr->sendData, &(Encoder_ptr->canMailbox));
-	//HAL_CAN_GetRxMessage(Encoder_ptr->hcan, CAN_RX_FIFO0, &(Encoder_ptr->canRxHeader), Encoder_ptr->rawRead);
 }
 
 void ENCODER_Get_AllAngles(void){
