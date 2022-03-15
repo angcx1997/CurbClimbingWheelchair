@@ -179,7 +179,7 @@ void Task_Control(void *param) {
 	    vTaskSuspendAll();
 	    runMotor(&rearMotor, 0);
 	    runMotor(&backMotor, 0);
-	    send_HubMotor(0, 0);
+	    HubMotor_SendCommand(0, 0);
 	    LED_Mode_Configuration(DANGER);
 	    portEXIT_CRITICAL();
 	}
@@ -381,6 +381,9 @@ void Task_Climbing(void *param) {
     Operation_Mode dummy_mode = EMPTY; //to store climbing up or down state
 
     uint32_t front_climbDown_enc = 0;
+
+    //Initialize hub motor
+	HubMotor_Init()
 
     //Initialize rear and back motor to zero and engage the brake
     bd25l_Init(&rearMotor);
@@ -690,7 +693,7 @@ bool climbingForward(float dist) {
 	return false;
     }
     if (dist / dist_remaining >= 0 && first_loop == false) {
-	hub_motor_status = send_HubMotor(rps, rps);
+	hub_motor_status = HubMotor_SendCommand(rps, rps);
 	if (HAL_GetTick() - prev_tick > 1) {
 	    float dt = (float) (HAL_GetTick() - prev_tick) / FREQUENCY;
 	    float rad_per_s = ((float) (hub_encoder_feedback.encoder_2 - prev_enc) / dt) * 2 * M_PI / 4096;
@@ -702,7 +705,7 @@ bool climbingForward(float dist) {
     }
     else {
 	first_loop = true;
-	hub_motor_status = send_HubMotor(0, 0);
+	hub_motor_status = HubMotor_SendCommand(0, 0);
 	return false;
     }
 }
@@ -802,12 +805,12 @@ bool in_climb_process(int front_enc, int back_enc) {
 	climbForward_speed = CLIMBING_LEG_LENGTH * (sin(TO_RAD(prev_angle)) - sin(TO_RAD(encoderBack.angleDeg))) / dt; //unit: m/s,
 	climbForward_speed = climbForward_speed / (HUB_DIAMETER / 2);
 	//Convert hub speed into pulse/second
-	hub_motor_status = send_HubMotor(climbForward_speed, climbForward_speed);
+	hub_motor_status = HubMotor_SendCommand(climbForward_speed, climbForward_speed);
 	prev_angle = encoderBack.angleDeg;
 	prev_angle_tick = HAL_GetTick();
     }
     else if (is_lifting == true && speed[BACK_INDEX] == 0)
-	hub_motor_status = send_HubMotor(0, 0);
+	hub_motor_status = HubMotor_SendCommand(0, 0);
 
     if (!is_lifting)
 	first_loop = true;

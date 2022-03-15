@@ -8,13 +8,13 @@
 #include "X2_6010S.h"
 extern uint8_t receive_buf[15];
 
-void hubMotor_Init() {
+void HubMotor_Init() {
     HAL_GPIO_WritePin(HubM_IO_SON_GPIO_Port, HubM_IO_SON_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(HubM_IO_NOT_GPIO_Port, HubM_IO_NOT_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(HubM_IO_POT_GPIO_Port, HubM_IO_POT_Pin, GPIO_PIN_RESET);
 }
 
-HAL_StatusTypeDef send_HubMotor(float m1_ang_speed, float m2_ang_speed) {
+HAL_StatusTypeDef HubMotor_SendCommand(float m1_ang_speed, float m2_ang_speed) {
     int16_t motor1_speed, motor2_speed;
     HAL_StatusTypeDef status;
     //convert velocity into pulse/second

@@ -61,16 +61,15 @@ typedef enum{
   * @param None
   * @retval None
   */
-void hubMotor_Init();
+void HubMotor_Init();
 
-void hubMotor_Stop();
 /**
   * @brief send speed command to Hub motor
   * Need add HAL_DMA_RECEIVE_CPT_CALLBACK to receive message
   * @param ang velocity
   * @retval None
   */
-HAL_StatusTypeDef send_HubMotor(float m1_ang_speed, float m2_ang_speed);
+HAL_StatusTypeDef HubMotor_SendCommand(float m1_ang_speed, float m2_ang_speed);
 
 //TODO:Received message process
 /**
