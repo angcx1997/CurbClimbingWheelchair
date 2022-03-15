@@ -354,7 +354,7 @@ void Task_Joystick(void *param) {
     while (1) {
 	ADC_DataRequest();
 	if (xQueueReceive(queue_joystick, &(joystick_handler), 50) == pdPASS) {
-	    calculatePos(&joystick_handler);
+		Joystick_CalculatePos(&joystick_handler);
 	}
 	else {
 	    joystick_handler.x = 0;
@@ -383,7 +383,7 @@ void Task_Climbing(void *param) {
     uint32_t front_climbDown_enc = 0;
 
     //Initialize hub motor
-	HubMotor_Init()
+	HubMotor_Init();
 
     //Initialize rear and back motor to zero and engage the brake
     bd25l_Init(&rearMotor);

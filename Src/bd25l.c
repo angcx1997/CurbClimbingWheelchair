@@ -14,12 +14,8 @@ Motor_TypeDef rearMotor =
     {
 	.ALM_port	= ClimbM_IO_ALM1_GPIO_Port,
 	.ALM_pin	= ClimbM_IO_ALM1_Pin,
-//	.speedCapture	= &htim2,
-//	.speedCapture_Channel = HAL_TIM_ACTIVE_CHANNEL_3,
 	.outputPWM 	= &htim2,
 	.PWM_channel	= TIM_CHANNEL_3,
-//	.outputPWM 	= &htim8,
-//	.PWM_channel	= TIM_CHANNEL_4,
 	.BRK_port	= ClimbM_IO_BRK1_GPIO_Port,
 	.BRK_pin	= ClimbM_IO_BRK1_Pin,
 	.EN_port	= ClimbM_IO_EN1_GPIO_Port,
@@ -34,10 +30,6 @@ Motor_TypeDef backMotor =
     {
 	.ALM_port	= ClimbM_IO_ALM2_GPIO_Port,
 	.ALM_pin	= ClimbM_IO_ALM2_Pin,
-	.speedCapture	= &htim2,
-	.speedCapture_Channel = HAL_TIM_ACTIVE_CHANNEL_4,
-//	.outputPWM 	= &htim8,
-//	.PWM_channel	= TIM_CHANNEL_4,
 	.outputPWM 	= &htim1,
 	.PWM_channel	= TIM_CHANNEL_2,
 	.BRK_port	= ClimbM_IO_BRK2_GPIO_Port,
@@ -63,7 +55,6 @@ void bd25l_DeInit(Motor_TypeDef* motor){
 void bd25l_Brake(Motor_TypeDef* motor){
 	brakeMotor(motor, 1);
 	enableMotor(motor, 0);
-
 }
 
 void enableMotor(Motor_TypeDef* motor, uint8_t state){

@@ -101,6 +101,12 @@ void MotorReadTemperature(Sabertooth_Handler* st_handler, uint8_t motor);
  */
 void MotorReadDutyCycle(Sabertooth_Handler* st_handler, uint8_t motor);
 
+/*!
+ * Process reply receive from uart callback function
+ * param st_handler 	pointer to sabertooth.
+ * param receive_buf 	pointer to buffer.
+ * param size			size of receive buffer
+ */
 void MotorProcessReply(Sabertooth_Handler *st_handler, uint8_t *receive_buf, uint8_t size);
 
 #endif /* INC_SABERTOOTH_H_ */

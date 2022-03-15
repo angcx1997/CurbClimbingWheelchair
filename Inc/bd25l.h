@@ -83,6 +83,10 @@ void enableMotor(Motor_TypeDef* motor, uint8_t state);
  */
 void brakeMotor(Motor_TypeDef* motor, uint8_t state);
 
+/** @brief Stop motor instantly by writing to brake pin
+ *  @params motor entity
+ *  @return Void
+ */
 void bd25l_Brake(Motor_TypeDef* motor);
 
 

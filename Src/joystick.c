@@ -44,7 +44,7 @@ static int clamp(int x, int min, int max)
 }
 
 /*********************************************************************
- * @fn      		  - calculatePos
+ * @fn      		  - Joystick_CalculatePos
  *
  * @brief             - Calculate joystick x and y value by fitlering the raw data and considering the deadzone
  *
@@ -52,7 +52,7 @@ static int clamp(int x, int min, int max)
  *
  * @Note              -
  */
-void calculatePos(JoystickHandle* joystick_handler)
+void Joystick_CalculatePos(JoystickHandle* joystick_handler)
 {
 	double angle;
 
