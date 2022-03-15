@@ -115,7 +115,7 @@ TaskHandle_t task_joystick;
 TaskHandle_t task_climbing;
 TaskHandle_t task_usb;
 
-QueueHandle_t queue_joystick;
+QueueHandle_t queue_joystick_raw;
 QueueHandle_t encoder;
 
 TimerHandle_t timer_buzzer;
@@ -237,8 +237,8 @@ int main(void) {
 
     /* USER CODE BEGIN RTOS_QUEUES */
     /* add queues, ... */
-    queue_joystick = xQueueCreate(5, sizeof(JoystickHandle)); //store pointer of joystick handler
-    configASSERT(queue_joystick != NULL);
+    queue_joystick_raw = xQueueCreate(5, sizeof(JoystickHandle)); //store joystick handler
+    configASSERT(queue_joystick_raw != NULL);
     /* USER CODE END RTOS_QUEUES */
 
     /* Create the thread(s) */
@@ -334,7 +334,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	    ADC_Read(adc_rawData);
 	    joystick_handler_irq.x = adc_rawData[2];
 	    joystick_handler_irq.y = adc_rawData[1];
-	    xQueueSendFromISR(queue_joystick, (void* )&joystick_handler_irq, &xHigherPriorityTaskWoken);
+	    xQueueSendFromISR(queue_joystick_raw, (void* )&joystick_handler_irq, &xHigherPriorityTaskWoken);
 	    break;
 	}
 	default:
