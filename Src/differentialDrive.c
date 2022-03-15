@@ -18,20 +18,8 @@
 static void limit_velocity(float* v);
 static void limit_acceleration(float* v, float prev_v, float dt);
 static float clamp(float x, float min, float max);
-void speedLimiter(motorState* motor_state, uint32_t frequency, float velocity);
 
-/*********************************************************************
- * @fn      		  - differentialDriveInit
- *
- * @brief             - Used to initialize the differential drive handler member to 0
- *
- * @param[differentialDrive_Handler*] - pointer to handler. User must initialize the handler in the main file
- *
- * @return            - None
- *
- * @Note              -
- */
-void differentialDriveInit(differentialDrive_Handler* dd_handler, uint32_t frequency){
+void DDrive_Init(differentialDrive_Handler* dd_handler, uint32_t frequency){
 	dd_handler->m_leftMotor = 0;
 	dd_handler->m_rightMotor = 0;
 	dd_handler->m_fPivYLimit = 0.15 * COMPUTERANGE;
@@ -40,41 +28,16 @@ void differentialDriveInit(differentialDrive_Handler* dd_handler, uint32_t frequ
 	memset(&dd_handler->right_motor_state, 0, sizeof(dd_handler->right_motor_state));
 }
 
-/*********************************************************************
- * @fn      		  - speedConfiguration
- *
- * @brief             - Used to initialize the speed configuration member
- *
- * @param[differentialDrive_Handler*] - pointer to handler. User must initialize the handler in the main file
- *
- * @return            - None
- *
- * @Note              -
- */
-//void speedConfiguration(speedConfig* speed_config){
-//	speed_config->min_vel = 0;
-//	speed_config->max_vel = 0;
-//	speed_config->min_acc = 0;
-//	speed_config->max_acc = 0;
-//	speed_config->min_jerk = 0;
-//	speed_config->max_jerk = 0;
-//}
+void DDrive_SpeedConfiguration(speedConfig* speed_config){
+	speed_config->min_vel = 0;
+	speed_config->max_vel = 0;
+	speed_config->min_acc = 0;
+	speed_config->max_acc = 0;
+	speed_config->min_jerk = 0;
+	speed_config->max_jerk = 0;
+}
 
-/*********************************************************************
- * @fn      		  - computeSpeed
- *
- * @brief             - Compute differential steering from (x,y) values.
- * 						Compute speed of the output motor through mapping of
- * 						joystick position to relative speed
- *
- * @param[XValue]     - X value in [-MAX_JOYSTICK_VALUE, MAX_JOYSTICK_VALUE] range.
- * @param[YValue]     - YValue: Y value in [-MAX_JOYSTICK_VALUE, MAX_JOYSTICK_VALUE] range.
- *
- * @return            - None
- *
- * @Note              -
- */
-void computeSpeed(differentialDrive_Handler* dd_handler, int XValue, int YValue, Gear_Level gear_level) {
+void DDrive_SpeedMapping(differentialDrive_Handler* dd_handler, int XValue, int YValue, Gear_Level gear_level) {
 
 #if MAPPING_ALGORITHM == 1
 	float   nMotPremixL = 0;    // Motor (left)  premixed output        (-MAX_JOYSTICK_VALUE..+MAX_JOYSTICK_VALUE)
@@ -134,7 +97,7 @@ void computeSpeed(differentialDrive_Handler* dd_handler, int XValue, int YValue,
 	dd_handler->m_rightMotor = 	(dd_handler->m_rightMotor < 0.005 && dd_handler->m_rightMotor > -0.005)? 0 : dd_handler->m_rightMotor;
 }
 
-void speedLimiter(motorState* motor_state, uint32_t frequency, float velocity){
+void DDrive_SpeedLimiter(motorState* motor_state, uint32_t frequency, float velocity){
 	float dt;
 	//If first read or stationary for too long
 	if (motor_state->prev_t == 0){

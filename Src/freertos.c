@@ -233,7 +233,7 @@ void Task_NormalDrive(void *param) {
     Gear_Level gear_level = GEAR1; //change the speed level if need higher speed
     Sabertooth_Handler sabertooth_handler;
 
-    differentialDriveInit(&differential_drive_handler, FREQUENCY);
+    DDrive_Init(&differential_drive_handler, FREQUENCY);
     //Initialize base wheel
     MotorInit(&sabertooth_handler, 128, &huart6);
     MotorStartup(&sabertooth_handler);
@@ -246,8 +246,8 @@ void Task_NormalDrive(void *param) {
 		HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
 	    }
 	    if (joystick_ptr != NULL) {
-		computeSpeed(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
-		differentialDrivetoSabertoothOutputAdapter(&differential_drive_handler, &sabertooth_handler);
+	    	DDrive_SpeedMapping(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
+	    	differentialDrivetoSabertoothOutputAdapter(&differential_drive_handler, &sabertooth_handler);
 	    }
 	    else {
 		//if no joystick data is received, stop both left and right wheel
@@ -268,7 +268,7 @@ void Task_NormalDrive(void *param) {
 	else if (lifting_mode == CURB_DETECTED) {
 	    if (joystick_ptr != NULL) {
 		joystick_ptr->y = (joystick_ptr->y > 0) ? 0 : joystick_ptr->y;
-		computeSpeed(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
+		DDrive_SpeedMapping(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
 		differentialDrivetoSabertoothOutputAdapter(&differential_drive_handler, &sabertooth_handler);
 		if (xTimerIsTimerActive(timer_buzzer) == pdFALSE) {
 		    buzzer_expiry_count = 0;

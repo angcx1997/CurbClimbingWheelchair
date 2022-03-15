@@ -8,8 +8,8 @@
 
 void differentialDrivetoSabertoothOutputAdapter(differentialDrive_Handler* dd_handler, Sabertooth_Handler *st_handler){
 
-	speedLimiter(&(dd_handler->left_motor_state), dd_handler->frequency, dd_handler->m_leftMotor);
-	speedLimiter(&(dd_handler->right_motor_state), dd_handler->frequency, dd_handler->m_rightMotor);
+	DDrive_SpeedLimiter(&(dd_handler->left_motor_state), dd_handler->frequency, dd_handler->m_leftMotor);
+	DDrive_SpeedLimiter(&(dd_handler->right_motor_state), dd_handler->frequency, dd_handler->m_rightMotor);
 
 	dd_handler->m_leftMotor = dd_handler->left_motor_state.vel;
 	dd_handler->m_rightMotor = dd_handler->right_motor_state.vel;
