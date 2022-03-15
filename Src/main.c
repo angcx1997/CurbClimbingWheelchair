@@ -125,7 +125,7 @@ EncoderHandle encoderBack;
 EncoderHandle encoderFront;
 
 //Buffer to receive uart tf-mini data
-uint8_t pBuffer[TFMINI_RX_SIZE];
+uint8_t tf_rx_buf[TFMINI_RX_SIZE];
 
 /* USER CODE END PV */
 
@@ -405,7 +405,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		last_hub_rx_t = xTaskGetTickCountFromISR();
 	    }
 	}
-//	HAL_UART_Receive_DMA(&huart3, receive_buf, 15);
     }
     //Sabertooth Callback
 //    if (huart->Instance == USART6) {
@@ -418,7 +417,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	//how many bytes received
 
 	uint8_t len = TFMINI_RX_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
-	distance = TFMINI_Plus_RcvData(pBuffer, len);
+	distance = TFMINI_Plus_RcvData(tf_rx_buf, len);
 	//send the received data;
 	if (distance != 0) {
 	    distanceNoNoise = Noise_loop(distance);
@@ -467,7 +466,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	}
 
 	last_tf_mini_t = xTaskGetTickCountFromISR();
-	HAL_UART_Receive_DMA(&huart1, pBuffer, TFMINI_RX_SIZE);
+	HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
 	/* Now the buffer is empty we can switch context if necessary. */
 	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
@@ -475,8 +474,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 }
 
 void Buzzer_Timer_Callback(TimerHandle_t xTimer) {
-    static uint8_t count = 0;
-    count = (buzzer_expiry_count == 0) ? 0 : count++;
+//    static uint8_t count = 0;
+//    count = (buzzer_expiry_count == 0) ? 0 : count++;
     HAL_GPIO_TogglePin(Buzzer_GPIO_Port, Buzzer_Pin);
 
 //    if (count >= buzzer_expiry_count*2)

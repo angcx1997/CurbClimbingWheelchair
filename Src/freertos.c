@@ -54,10 +54,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-//#define BUTTON_CONTROL
-#define USB_CONTROL
-#define ONE_BUTTON_CONTROL_CURB_CLIMBING
-//#define USB_CMD_CONTROL
+
 
 //#define DEBUGGING
 
@@ -73,7 +70,6 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
 const float forward_distance = BASE_LENGTH; // (in meter) distance to travel during climbing process by hub
 /* USER CODE END PM */
 
@@ -108,7 +104,7 @@ extern TaskHandle_t task_joystick;
 extern TaskHandle_t task_climbing;
 extern TaskHandle_t task_usb;
 
-extern QueueHandle_t queue_joystick;
+extern QueueHandle_t queue_joystick_raw;
 extern QueueHandle_t encoder;
 
 extern TimerHandle_t timer_buzzer;
@@ -151,7 +147,7 @@ extern TickType_t last_hub_rx_t;
 extern TickType_t last_can_rx_t[2];
 extern TickType_t last_tf_mini_t;
 
-extern uint8_t pBuffer[TFMINI_RX_SIZE];
+extern uint8_t tf_rx_buf[TFMINI_RX_SIZE];
 extern uint8_t usbBuffer[1];
 uint32_t back_encoder_input = 0;
 uint8_t finish_climbing_flag = 0; //1 if climbing motion finish
@@ -172,6 +168,9 @@ bool in_climb_process(int front_enc, int back_enc);
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
 void Task_Control(void *param) {
+	/*
+	 * Pre-empt all other task and immediately stop running wheel
+	 */
     while (1) {
 	xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
 	if (lifting_mode == DANGER) {
@@ -187,6 +186,10 @@ void Task_Control(void *param) {
 }
 
 void Task_Keyboard(void *param) {
+	/*
+	 * Use to store user button state
+	 */
+
     //Memset struct to 0 and Initialize all button used
     Button_TypeDef button1, button2, button3;
     memset(&button1, 0, sizeof(Button_TypeDef));
@@ -208,7 +211,7 @@ void Task_Keyboard(void *param) {
 	Button_FilteredInput(&button2, 30);
 	Button_FilteredInput(&button3, 30);
 
-#ifndef USB_CONTROL
+#ifdef BUTTON_CONTROL
 	if (button1.state == 1)
 	    BITSET(button_state, 0);
 	else
@@ -229,57 +232,69 @@ void Task_Keyboard(void *param) {
 }
 
 void Task_NormalDrive(void *param) {
+	/*
+	 * Mainly control wheelchair base wheel, task run when normal driving
+	 */
+	//TODO: Use queue to sync joystick data, current approach is not thread safe
+	//Use either mutex or queue
     differentialDrive_Handler differential_drive_handler;
     Gear_Level gear_level = GEAR1; //change the speed level if need higher speed
     Sabertooth_Handler sabertooth_handler;
 
-    DDrive_Init(&differential_drive_handler, FREQUENCY);
     //Initialize base wheel
+    DDrive_Init(&differential_drive_handler, FREQUENCY);
     MotorInit(&sabertooth_handler, 128, &huart6);
     MotorStartup(&sabertooth_handler);
     MotorStop(&sabertooth_handler);
     while (1) {
+
 	if (lifting_mode == NORMAL) {
-	    LED_Mode_Configuration(NORMAL);
+	    //When user in normal driving mode
+		LED_Mode_Configuration(NORMAL);
+
+	    //Stop buzzer timer if user mode has return to normal
 	    if (xTimerIsTimerActive(timer_buzzer) == pdTRUE) {
-		xTimerStop(timer_buzzer, 1);
-		HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
+			xTimerStop(timer_buzzer, 1);
+			HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
 	    }
+
+	    //Calculate wheel velocity from joystick input
 	    if (joystick_ptr != NULL) {
 	    	DDrive_SpeedMapping(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
 	    	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 	    }
 	    else {
-		//if no joystick data is received, stop both left and right wheel
-		MotorThrottle(&sabertooth_handler, 1, 0);
-		MotorThrottle(&sabertooth_handler, 2, 0);
+			//if no joystick data is received, stop both left and right wheel
+	    	MotorStop(&sabertooth_handler);
 	    }
 	}
-	else if (lifting_mode == STOP) {
-	    MotorThrottle(&sabertooth_handler, 1, 0);
-	    MotorThrottle(&sabertooth_handler, 2, 0);
-//	    if (xTimerIsTimerActive(timer_buzzer) == pdFALSE) {
-//		buzzer_expiry_count = 1; //beep for 1 second
-//		xTimerStart(timer_buzzer, 1);
-//	    }
-	    xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
 
+#if USB_CONTROL
+	else if (lifting_mode == STOP) {
+		//When front distance sensor
+		MotorStop(&sabertooth_handler);
+	    xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
 	}
+#endif
+
 	else if (lifting_mode == CURB_DETECTED) {
+		//When curb is detected by distance sensor,
+		//Restrict wheelchair movement to prevent user move forward
 	    if (joystick_ptr != NULL) {
-		joystick_ptr->y = (joystick_ptr->y > 0) ? 0 : joystick_ptr->y;
-		DDrive_SpeedMapping(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
-		dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
-		if (xTimerIsTimerActive(timer_buzzer) == pdFALSE) {
-		    buzzer_expiry_count = 0;
-		    xTimerStart(timer_buzzer, 1);
-		}
+			joystick_ptr->y = (joystick_ptr->y > 0) ? 0 : joystick_ptr->y;
+			DDrive_SpeedMapping(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
+			dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
+			//Notify user that he is in danger situation
+			//Function like beeping sound when cars is reversing
+			if (xTimerIsTimerActive(timer_buzzer) == pdFALSE) {
+				buzzer_expiry_count = 0;
+				xTimerStart(timer_buzzer, 1);
+			}
 	    }
 	}
 	else {
 	    //If not in driving mode
-	    MotorThrottle(&sabertooth_handler, 1, 0);
-	    MotorThrottle(&sabertooth_handler, 2, 0);
+		MotorStop(&sabertooth_handler);
 	    xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
 	}
 	vTaskDelay(10);
@@ -287,12 +302,19 @@ void Task_NormalDrive(void *param) {
 }
 
 void Task_Climb_Sensor(void *param) {
+	/*
+	 * Use to store sensor reading that would be use as climbing
+	 * These sensor are highly critical. Single malfunction will cause the climbing motion to be failed
+	 * Always make sure all sensor is in good condition
+	 */
+
+	//Limit switch located on each individual climbing leg
+	//Initialize member
     Button_TypeDef rearLS1, rearLS2, backLS1, backLS2;
     memset(&rearLS1, 0, sizeof(Button_TypeDef));
     memset(&rearLS2, 0, sizeof(Button_TypeDef));
     memset(&backLS1, 0, sizeof(Button_TypeDef));
     memset(&backLS2, 0, sizeof(Button_TypeDef));
-
     rearLS1.gpioPort = LimitSW1_GPIO_Port;
     rearLS1.gpioPin = LimitSW1_Pin;
     rearLS2.gpioPort = LimitSW2_GPIO_Port;
@@ -302,38 +324,50 @@ void Task_Climb_Sensor(void *param) {
     backLS2.gpioPort = LimitSW4_GPIO_Port;
     backLS2.gpioPin = LimitSW4_Pin;
 
-    TickType_t tick = xTaskGetTickCount();
-    const TickType_t period = pdMS_TO_TICKS(50); //execution period
-
-    //Initialize sensor and reception
+    //Initialize climbing encoder sensor and start front distance sensor data reception
     ENCODER_Init();
-    HAL_UART_Receive_DMA(&huart1, pBuffer, TFMINI_RX_SIZE);
+    HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
+
+    //Ensure periodic execution
+	TickType_t tick = xTaskGetTickCount();
+	const TickType_t period = pdMS_TO_TICKS(50);
+
     while (1) {
+    //Read encoder data
 	ENCODER_Get_Angle(&encoderBack);
 	ENCODER_Get_Angle(&encoderFront);
 
+	//Read limit switch state
 	Button_FilteredInput(&rearLS1, 5);
 	Button_FilteredInput(&rearLS2, 5);
 	Button_FilteredInput(&backLS1, 5);
 	Button_FilteredInput(&backLS2, 5);
 
+	//TODO: What if leg is suspended on the air, touchdown will turn back to 0 and cause the leg to continue landing
+	//If both front LS is touched, store in touchdown (use to tell front leg are both in contact with ground)
 	if (rearLS1.state == 1 || rearLS2.state == 1)
 	    touch_down[FRONT_INDEX] = 1;
 	else
 	    touch_down[FRONT_INDEX] = 0;
 
+	//If both back LS is touched, store in touchdown (use to tell back leg are both in contact with ground)
 	if (backLS1.state == 1 || backLS2.state == 1)
 	    touch_down[BACK_INDEX] = 1;
 	else
 	    touch_down[BACK_INDEX] = 0;
 
+	//As a safety check to make sure encoder data is received
+	//If encoder is faulty, no data reception, suspend all task
 	if ((xTaskGetTickCount() - last_can_rx_t[0]) > 2000 || (xTaskGetTickCount() - last_can_rx_t[1]) > 2000) {
 	    lifting_mode = DANGER;
 	    xTaskNotify(task_control, 0, eNoAction);
 	}
 
+	//As a safety check for tf mini uart error
+	//UART error cause by noise flag, framing, overrun error happens during multibuffer dma communication
+	//TODO: Use Error callback function to re-initialize callback or act as a flag
 	if (xTaskGetTickCount() - last_tf_mini_t > 200) {
-	    HAL_UART_Receive_DMA(&huart1, pBuffer, TFMINI_RX_SIZE);
+	    HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
 	}
 
 	vTaskDelayUntil(&tick, period);
@@ -341,7 +375,9 @@ void Task_Climb_Sensor(void *param) {
 }
 
 void Task_Joystick(void *param) {
-
+	/*
+	 * Use to process joystick data when receive data from irq
+	 */
     //Note that the period cannot be shorter than 100
     TickType_t tick = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(100); //execution period
@@ -353,7 +389,7 @@ void Task_Joystick(void *param) {
 
     while (1) {
 	ADC_DataRequest();
-	if (xQueueReceive(queue_joystick, &(joystick_handler), 50) == pdPASS) {
+	if (xQueueReceive(queue_joystick_raw, &(joystick_handler), 50) == pdPASS) {
 		Joystick_CalculatePos(&joystick_handler);
 	}
 	else {
@@ -361,7 +397,7 @@ void Task_Joystick(void *param) {
 	    joystick_handler.y = 0;
 	    //Re-initialize joystick and queue
 	    ADC_Init();
-	    xQueueReset(queue_joystick);
+	    xQueueReset(queue_joystick_raw);
 	}
 
 #ifdef DEBUGGING
@@ -369,6 +405,7 @@ void Task_Joystick(void *param) {
 	y = joystick_handler.y;
 #endif
 	joystick_ptr = &joystick_handler;
+
 	vTaskDelayUntil(&tick, period);
     }
 }
