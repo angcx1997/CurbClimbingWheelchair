@@ -21,7 +21,7 @@ static const float JoyForwardAngle = 1.57;
 static const float JoyLeftTurnAngle = 3.142;
 static const float JoyRightTurnAngle = 0;
 static const float JoyTurnAngleDeadzone = 0.05;
-static const float JoyForwardAngleDeadzone = 0.2;
+static const float JoyForwardAngleDeadzone = 0.5;
 
 static JoystickHandle prev_joystick = {.x = -1, .y = -1};
 

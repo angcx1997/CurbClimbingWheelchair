@@ -55,7 +55,7 @@ typedef enum {
 /* USER CODE BEGIN EC */
 #define FREQUENCY 1000
 
-#define LEFT_				0
+#define LEFT_INDEX				0
 #define RIGHT_INDEX 			1
 #define FRONT_INDEX			0
 #define BACK_INDEX			1
