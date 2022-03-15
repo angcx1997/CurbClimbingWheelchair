@@ -11,6 +11,11 @@
 #include "Sabertooth.h"
 #include "differentialDrive.h"
 
-void differentialDrivetoSabertoothOutputAdapter(differentialDrive_Handler* dd_handler, Sabertooth_Handler *st_handler);
+/*
+ * brief Convert from differential drive velocity to sabertooth suitable input
+ * param dd_handler 	pointer to differentialDrive_Handler
+ * param  st_handler	pointer to sabertooth handler
+ */
+void dDriveToST_Adapter(differentialDrive_Handler* dd_handler, Sabertooth_Handler *st_handler);
 
 #endif /* INC_DIFFERENTIALDRIVETOSABERTOOTH_H_ */

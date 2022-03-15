@@ -247,7 +247,7 @@ void Task_NormalDrive(void *param) {
 	    }
 	    if (joystick_ptr != NULL) {
 	    	DDrive_SpeedMapping(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
-	    	differentialDrivetoSabertoothOutputAdapter(&differential_drive_handler, &sabertooth_handler);
+	    	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 	    }
 	    else {
 		//if no joystick data is received, stop both left and right wheel
@@ -269,7 +269,7 @@ void Task_NormalDrive(void *param) {
 	    if (joystick_ptr != NULL) {
 		joystick_ptr->y = (joystick_ptr->y > 0) ? 0 : joystick_ptr->y;
 		DDrive_SpeedMapping(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
-		differentialDrivetoSabertoothOutputAdapter(&differential_drive_handler, &sabertooth_handler);
+		dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 		if (xTimerIsTimerActive(timer_buzzer) == pdFALSE) {
 		    buzzer_expiry_count = 0;
 		    xTimerStart(timer_buzzer, 1);
