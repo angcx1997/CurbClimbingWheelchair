@@ -5,7 +5,7 @@
 
 #include "button.h"
 
-uint8_t GPIO_Digital_Filtered_Input(Button_TypeDef* hgpio, uint32_t debounce_time)
+uint8_t Button_FilteredInput(Button_TypeDef* hgpio, uint32_t debounce_time)
 {
 	// read the state of the switch into a local variable (LOW, when the button is not pressed)
 	hgpio->curRead = HAL_GPIO_ReadPin(hgpio->gpioPort, hgpio->gpioPin);
@@ -14,7 +14,6 @@ uint8_t GPIO_Digital_Filtered_Input(Button_TypeDef* hgpio, uint32_t debounce_tim
 		// reset the debouncing timer
 		hgpio->lastDebounceTime = HAL_GetTick();
 	// whatever the reading is at, it's been there for longer than the debounce delay, so the current value is safe
-//	&& (hgpio->curRead != hgpio->state)
 	if (((HAL_GetTick() - hgpio->lastDebounceTime) > debounce_time) )
 	{
 		hgpio->state = hgpio->curRead;

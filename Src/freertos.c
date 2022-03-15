@@ -204,9 +204,9 @@ void Task_Keyboard(void *param) {
     const TickType_t period = pdMS_TO_TICKS(250); //execution period
 
     while (1) {
-	GPIO_Digital_Filtered_Input(&button1, 30);
-	GPIO_Digital_Filtered_Input(&button2, 30);
-	GPIO_Digital_Filtered_Input(&button3, 30);
+	Button_FilteredInput(&button1, 30);
+	Button_FilteredInput(&button2, 30);
+	Button_FilteredInput(&button3, 30);
 
 #ifndef USB_CONTROL
 	if (button1.state == 1)
@@ -312,10 +312,10 @@ void Task_Climb_Sensor(void *param) {
 	ENCODER_Get_Angle(&encoderBack);
 	ENCODER_Get_Angle(&encoderFront);
 
-	GPIO_Digital_Filtered_Input(&rearLS1, 5);
-	GPIO_Digital_Filtered_Input(&rearLS2, 5);
-	GPIO_Digital_Filtered_Input(&backLS1, 5);
-	GPIO_Digital_Filtered_Input(&backLS2, 5);
+	Button_FilteredInput(&rearLS1, 5);
+	Button_FilteredInput(&rearLS2, 5);
+	Button_FilteredInput(&backLS1, 5);
+	Button_FilteredInput(&backLS2, 5);
 
 	if (rearLS1.state == 1 || rearLS2.state == 1)
 	    touch_down[FRONT_INDEX] = 1;

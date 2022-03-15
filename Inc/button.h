@@ -10,14 +10,19 @@
 
 typedef struct
 {
-	GPIO_TypeDef* 		gpioPort;
+	GPIO_TypeDef* 	gpioPort;
 	uint16_t		gpioPin;
-	uint8_t			curRead;
-	uint8_t			preRead;
-	uint8_t   		state;
-	uint32_t	    	lastDebounceTime;
+	uint8_t			curRead;			/*!< Use to store and compare GPIO reading >*/
+	uint8_t			preRead;			/*!< Use to store and compare GPIO reading >*/
+	uint8_t   		state;				/*!< GPIO state by filtering the debounce >*/
+	uint32_t	    lastDebounceTime; 	/*!< Use to store moment button pressed >*/
 }Button_TypeDef;
 
-uint8_t GPIO_Digital_Filtered_Input(Button_TypeDef* hgpio, uint32_t debounce_time);
+/*
+ * brief Read GPIO filter input
+ * param hgpio 			pointer to gpio handler
+ * param debounce_time	button time to finish debouncing
+ */
+uint8_t Button_FilteredInput(Button_TypeDef* hgpio, uint32_t debounce_time);
 
 #endif
