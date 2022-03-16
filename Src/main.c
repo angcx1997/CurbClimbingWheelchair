@@ -326,6 +326,11 @@ void SystemClock_Config(void) {
 }
 
 /* USER CODE BEGIN 4 */
+/**
+  * @brief  EXTI line detection callbacks.
+  * @param  GPIO_Pin Specifies the pins connected EXTI line
+  * @retval None
+  */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     switch (GPIO_Pin) {
@@ -346,6 +351,12 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
+/**
+  * @brief  Rx FIFO 0 message pending callback.
+  * @param  hcan pointer to a CAN_HandleTypeDef structure that contains
+  *         the configuration information for the specified CAN.
+  * @retval None
+  */
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
     static CAN_RxHeaderTypeDef canRxHeader;
     uint8_t incoming[8];
@@ -392,6 +403,12 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
     }
 }
 
+/**
+  * @brief  Rx Transfer completed callbacks.
+  * @param  huart  Pointer to a UART_HandleTypeDef structure that contains
+  *                the configuration information for the specified UART module.
+  * @retval None
+  */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     //Hub Encoder callback
     if (huart->Instance == USART3) {

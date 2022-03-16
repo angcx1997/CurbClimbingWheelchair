@@ -110,37 +110,47 @@ extern TimerHandle_t timer_buzzer;
 extern EncoderHandle encoderBack;
 extern EncoderHandle encoderFront;
 
+/**Used to store climbing leg speed*/
 int speed[2] = {
 	0
 };
+/**Used to tell if both same-sided leg is contact with ground*/
 uint8_t touch_down[2] = {
 	0
 };
 speedConfig speed_config = {
 	.min_vel = -0.25, 	//Need to be lower than |max_vel| to make sure reverse is slower and safer
-	.max_vel = 0.4,	//gear level/100
+	.max_vel = 0.4,		//gear level/100
 	.min_acc = -0.8,	//max_vel*2
 	.max_acc = 0.2
 //max_vel2
 };
-Motor_TypeDef rearMotor, backMotor; //declare in bd25l.c
+
+//declare in bd25l.c
+Motor_TypeDef rearMotor, backMotor;
+
+/**Used to store button state of 3 different button*/
 uint8_t button_state = 0;
 
 JoystickHandle *joystick_ptr = NULL;
 Operation_Mode lifting_mode = RETRACTION;
+#ifdef DEBUGGING
 int x, y;
+#endif
+/**Status of hub uart sending data*/
 HAL_StatusTypeDef hub_motor_status;
 
-//Front Climbing Position Control
+/*Front climb position control PID variable*/
 PID_t frontClimb_pid;
 extern float frontClimb_input, frontClimb_output;
 extern float frontClimb_setpoint;
 
-//Back Climbing Position Control
+/*Back climb position control PID variable*/
 PID_t backClimb_pid;
 extern float backClimb_input, backClimb_output;
 extern float backClimb_setpoint;
 
+/*Used to check if the transmission happen in time*/
 extern TickType_t last_hub_rx_t;
 extern TickType_t last_can_rx_t[2];
 extern TickType_t last_tf_mini_t;
@@ -242,7 +252,8 @@ void Task_NormalDrive(void *param) {
     /*
      * Mainly control wheelchair base wheel, task run when normal driving
      */
-    //TODO: Use queue to sync joystick data, current approach is not thread safe
+    //TODO: Use queue to sync joystick data between task normal drive and joystick
+    //current approach is not thread safe
     //Use either mutex or queue
     differentialDrive_Handler differential_drive_handler;
     Gear_Level gear_level = GEAR1; //change the speed level if need higher speed
