@@ -110,11 +110,11 @@ extern TimerHandle_t timer_buzzer;
 extern EncoderHandle encoderBack;
 extern EncoderHandle encoderFront;
 
-/**Used to store climbing leg speed*/
+/*Used to store climbing leg speed*/
 int speed[2] = {
 	0
 };
-/**Used to tell if both same-sided leg is contact with ground*/
+/*Used to tell if both same-sided leg is contact with ground*/
 uint8_t touch_down[2] = {
 	0
 };
@@ -129,7 +129,7 @@ speedConfig speed_config = {
 //declare in bd25l.c
 Motor_TypeDef rearMotor, backMotor;
 
-/**Used to store button state of 3 different button*/
+/*Used to store button state of 3 different button*/
 uint8_t button_state = 0;
 
 JoystickHandle *joystick_ptr = NULL;
@@ -137,7 +137,7 @@ Operation_Mode lifting_mode = RETRACTION;
 #ifdef DEBUGGING
 int x, y;
 #endif
-/**Status of hub uart sending data*/
+/*Status of hub uart sending data*/
 HAL_StatusTypeDef hub_motor_status;
 
 /*Front climb position control PID variable*/

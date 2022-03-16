@@ -32,9 +32,9 @@ extern "C" {
  * ONEBUTTON:	Button will initial the climbing procedure
  * USB_CONTROL: Require computer GUI
  */
-//#define BUTTON_CONTROL
+#define BUTTON_CONTROL
 //#define USB_CONTROL
-#define ONE_BUTTON_CONTROL_CURB_CLIMBING
+//#define ONE_BUTTON_CONTROL_CURB_CLIMBING
 //#define USB_CMD_CONTROL
 
 /* Includes ------------------------------------------------------------------*/
