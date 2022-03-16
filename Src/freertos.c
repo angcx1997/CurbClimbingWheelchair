@@ -186,6 +186,9 @@ void Task_Control(void *param) {
 void Task_Keyboard(void *param) {
     /*
      * Use to store user button state
+     * Button 0 (leftmost)	: Get out of stop mode
+     * Button 1	(middle)	:
+     * Button 2 (rightmost)	: Go into climbing mode
      */
 
     //Memset struct to 0 and Initialize all button used
@@ -223,6 +226,11 @@ void Task_Keyboard(void *param) {
 	    BITSET(button_state, 2);
 	else
 	    BITCLEAR(button_state, 2);
+
+	if (BITCHECK(button_state,0) && lifting_mode == STOP){
+	    lifting_mode = CURB_DETECTED;
+	    xTaskNotify(task_normalDrive, 0, eNoAction);
+	}
 	vTaskDelayUntil(&tick, period);
     }
 }
@@ -265,13 +273,11 @@ void Task_NormalDrive(void *param) {
 	    }
 	}
 
-#if USB_CONTROL
 	else if (lifting_mode == STOP) {
-		//When front distance sensor
-		MotorStop(&sabertooth_handler);
+	    //When front distance sensor
+	    MotorStop(&sabertooth_handler);
 	    xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
 	}
-#endif
 
 	else if (lifting_mode == CURB_DETECTED) {
 	    //When curb is detected by distance sensor,
@@ -524,10 +530,11 @@ void Task_Climbing(void *param) {
 				/ CLIMBING_LEG_LENGTH)) - 30.0; //30.0 is the bending angle of the extender(originally 36.6).
 		back_encoder_input = (back_lifting_angle / 360.0) * (4096 * BACK_GEAR_RATIO);
 
-		//3 different scenerio to abort the climbing up task
-		//1. The angle calculated is not feasible
-		//2. The leg rotate more than it supposed to
-		//3. The curb height is too low where climbing up is unnecessary
+		/* 3 different scenerio to abort the climbing up task
+		 1. The angle calculated is not feasible
+		 2. The leg rotate more than it supposed to
+		 3. The curb height is too low where climbing up is unnecessary
+		 */
 		if (isnan(back_lifting_angle) || back_encoder_input >= MAX_BACK_ALLOWABLE_ENC || curb_height <= 0.05) {
 		    lifting_mode = RETRACTION;
 		    continue;

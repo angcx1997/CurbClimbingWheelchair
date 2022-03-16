@@ -35,7 +35,6 @@ extern "C" {
 //#define BUTTON_CONTROL
 //#define USB_CONTROL
 #define ONE_BUTTON_CONTROL_CURB_CLIMBING
-
 //#define USB_CMD_CONTROL
 
 /* Includes ------------------------------------------------------------------*/

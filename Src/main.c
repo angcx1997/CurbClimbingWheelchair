@@ -424,8 +424,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     //curb change detection callback
     if (huart->Instance == USART1) {
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-	//how many bytes received
-
+	//Number of bytes received
 	uint8_t len = TFMINI_RX_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
 	distance = TFMINI_Plus_RcvData(tf_rx_buf, len);
 	//send the received data;
@@ -434,6 +433,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	    // diff = detectCurb_down(distanceNoNoise);
 	    if (prev_dist == 0)
 		prev_dist = distanceNoNoise;
+
 	    /*
 	     diff = distanceNoNoise - prev_dist;
 	     if(diff >= 15 && lifting_mode == NORMAL){
@@ -452,6 +452,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	     USB_TransmitData(USB_MOVE);
 	     }
 	     */
+
 	    if (distanceNoNoise >= 20 && lifting_mode == NORMAL) {
 		//stop the base wheel completely
 		lifting_mode = STOP;
@@ -470,9 +471,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	    }
 
 	    prev_dist = distanceNoNoise;
-//			prev_dist = MAX(prev_dist, distanceNoNoise);
-//			if (lifting_mode == STOP)
-//				prev_dist = 0;
+//	    prev_dist = MAX(prev_dist, distanceNoNoise);
+//	    if (lifting_mode == STOP)
+//		prev_dist = 0;
 	}
 
 	last_tf_mini_t = xTaskGetTickCountFromISR();
