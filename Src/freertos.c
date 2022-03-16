@@ -55,9 +55,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-
 //#define DEBUGGING
-
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define TO_RAD(x) x * M_PI / 180
@@ -159,18 +157,18 @@ extern uint8_t buzzer_expiry_count;
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
-void LED_Mode_Configuration(Operation_Mode mode);
-bool climbingForward(float dist); //return true if in the process of moving forward
-bool goto_pos(int enc, PID_t pid_t); //return true if still in the process of reaching the position
-bool in_climb_process(int front_enc, int back_enc);
+static void LED_Mode_Configuration(Operation_Mode mode);
+static bool climbingForward(float dist); //return true if in the process of moving forward
+static bool goto_pos(int enc, PID_t pid_t); //return true if still in the process of reaching the position
+static bool in_climb_process(int front_enc, int back_enc);
 /* USER CODE END FunctionPrototypes */
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
 void Task_Control(void *param) {
-	/*
-	 * Pre-empt all other task and immediately stop running wheel
-	 */
+    /*
+     * Pre-empt all other task and immediately stop running wheel
+     */
     while (1) {
 	xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
 	if (lifting_mode == DANGER) {
@@ -186,9 +184,9 @@ void Task_Control(void *param) {
 }
 
 void Task_Keyboard(void *param) {
-	/*
-	 * Use to store user button state
-	 */
+    /*
+     * Use to store user button state
+     */
 
     //Memset struct to 0 and Initialize all button used
     Button_TypeDef button1, button2, button3;
@@ -211,7 +209,6 @@ void Task_Keyboard(void *param) {
 	Button_FilteredInput(&button2, 30);
 	Button_FilteredInput(&button3, 30);
 
-#ifdef BUTTON_CONTROL
 	if (button1.state == 1)
 	    BITSET(button_state, 0);
 	else
@@ -226,17 +223,16 @@ void Task_Keyboard(void *param) {
 	    BITSET(button_state, 2);
 	else
 	    BITCLEAR(button_state, 2);
-#endif
 	vTaskDelayUntil(&tick, period);
     }
 }
 
 void Task_NormalDrive(void *param) {
-	/*
-	 * Mainly control wheelchair base wheel, task run when normal driving
-	 */
-	//TODO: Use queue to sync joystick data, current approach is not thread safe
-	//Use either mutex or queue
+    /*
+     * Mainly control wheelchair base wheel, task run when normal driving
+     */
+    //TODO: Use queue to sync joystick data, current approach is not thread safe
+    //Use either mutex or queue
     differentialDrive_Handler differential_drive_handler;
     Gear_Level gear_level = GEAR1; //change the speed level if need higher speed
     Sabertooth_Handler sabertooth_handler;
@@ -250,22 +246,22 @@ void Task_NormalDrive(void *param) {
 
 	if (lifting_mode == NORMAL) {
 	    //When user in normal driving mode
-		LED_Mode_Configuration(NORMAL);
+	    LED_Mode_Configuration(NORMAL);
 
 	    //Stop buzzer timer if user mode has return to normal
 	    if (xTimerIsTimerActive(timer_buzzer) == pdTRUE) {
-			xTimerStop(timer_buzzer, 1);
-			HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
+		xTimerStop(timer_buzzer, 1);
+		HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
 	    }
 
 	    //Calculate wheel velocity from joystick input
 	    if (joystick_ptr != NULL) {
-	    	DDrive_SpeedMapping(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
-	    	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
+		DDrive_SpeedMapping(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
+		dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 	    }
 	    else {
-			//if no joystick data is received, stop both left and right wheel
-	    	MotorStop(&sabertooth_handler);
+		//if no joystick data is received, stop both left and right wheel
+		MotorStop(&sabertooth_handler);
 	    }
 	}
 
@@ -278,23 +274,23 @@ void Task_NormalDrive(void *param) {
 #endif
 
 	else if (lifting_mode == CURB_DETECTED) {
-		//When curb is detected by distance sensor,
-		//Restrict wheelchair movement to prevent user move forward
+	    //When curb is detected by distance sensor,
+	    //Restrict wheelchair movement to prevent user move forward
 	    if (joystick_ptr != NULL) {
-			joystick_ptr->y = (joystick_ptr->y > 0) ? 0 : joystick_ptr->y;
-			DDrive_SpeedMapping(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
-			dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
-			//Notify user that he is in danger situation
-			//Function like beeping sound when cars is reversing
-			if (xTimerIsTimerActive(timer_buzzer) == pdFALSE) {
-				buzzer_expiry_count = 0;
-				xTimerStart(timer_buzzer, 1);
-			}
+		joystick_ptr->y = (joystick_ptr->y > 0) ? 0 : joystick_ptr->y;
+		DDrive_SpeedMapping(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
+		dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
+		//Notify user that he is in danger situation
+		//Function like beeping sound when cars is reversing
+		if (xTimerIsTimerActive(timer_buzzer) == pdFALSE) {
+		    buzzer_expiry_count = 0;
+		    xTimerStart(timer_buzzer, 1);
+		}
 	    }
 	}
 	else {
 	    //If not in driving mode
-		MotorStop(&sabertooth_handler);
+	    MotorStop(&sabertooth_handler);
 	    xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
 	}
 	vTaskDelay(10);
@@ -302,14 +298,14 @@ void Task_NormalDrive(void *param) {
 }
 
 void Task_Climb_Sensor(void *param) {
-	/*
-	 * Use to store sensor reading that would be use as climbing
-	 * These sensor are highly critical. Single malfunction will cause the climbing motion to be failed
-	 * Always make sure all sensor is in good condition
-	 */
+    /*
+     * Use to store sensor reading that would be use as climbing
+     * These sensor are highly critical. Single malfunction will cause the climbing motion to be failed
+     * Always make sure all sensor is in good condition
+     */
 
-	//Limit switch located on each individual climbing leg
-	//Initialize member
+    //Limit switch located on each individual climbing leg
+    //Initialize member
     Button_TypeDef rearLS1, rearLS2, backLS1, backLS2;
     memset(&rearLS1, 0, sizeof(Button_TypeDef));
     memset(&rearLS2, 0, sizeof(Button_TypeDef));
@@ -329,11 +325,11 @@ void Task_Climb_Sensor(void *param) {
     HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
 
     //Ensure periodic execution
-	TickType_t tick = xTaskGetTickCount();
-	const TickType_t period = pdMS_TO_TICKS(50);
+    TickType_t tick = xTaskGetTickCount();
+    const TickType_t period = pdMS_TO_TICKS(50);
 
     while (1) {
-    //Read encoder data
+	//Read encoder data
 	ENCODER_Get_Angle(&encoderBack);
 	ENCODER_Get_Angle(&encoderFront);
 
@@ -365,7 +361,7 @@ void Task_Climb_Sensor(void *param) {
 
 	//As a safety check for tf mini uart error
 	//UART error cause by noise flag, framing, overrun error happens during multibuffer dma communication
-	//TODO: Use Error callback function to re-initialize callback or act as a flag
+	//TODO: Use Error callback function to re-initialize callback or act as a flag to reinstate reception
 	if (xTaskGetTickCount() - last_tf_mini_t > 200) {
 	    HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
 	}
@@ -375,9 +371,9 @@ void Task_Climb_Sensor(void *param) {
 }
 
 void Task_Joystick(void *param) {
-	/*
-	 * Use to process joystick data when receive data from irq
-	 */
+    /*
+     * Use to process joystick data when receive data from irq
+     */
     //Note that the period cannot be shorter than 100
     TickType_t tick = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(100); //execution period
@@ -390,7 +386,7 @@ void Task_Joystick(void *param) {
     while (1) {
 	ADC_DataRequest();
 	if (xQueueReceive(queue_joystick_raw, &(joystick_handler), 50) == pdPASS) {
-		Joystick_CalculatePos(&joystick_handler);
+	    Joystick_CalculatePos(&joystick_handler);
 	}
 	else {
 	    joystick_handler.x = 0;
@@ -420,7 +416,7 @@ void Task_Climbing(void *param) {
     uint32_t front_climbDown_enc = 0;
 
     //Initialize hub motor
-	HubMotor_Init();
+    HubMotor_Init();
 
     //Initialize rear and back motor to zero and engage the brake
     bd25l_Init(&rearMotor);
@@ -446,28 +442,20 @@ void Task_Climbing(void *param) {
 	    speed[BACK_INDEX] = -10;
 	else if (BITCHECK(button_state,1) == 0)
 	    speed[BACK_INDEX] = 0;
+#endif
 
-//	if ((state & (1 << 0)) && ((state & (1 << 2)) == 0))
-//	    speed[FRONT_INDEX] = 10;
-//	else if ((state & (1 << 0)) && (state & (1 << 2)))
-//	    speed[FRONT_INDEX] = -10;
-//	else if ((state & (1 << 0)) == 0)
-//	    speed[FRONT_INDEX] = 0;
-//
-//	if ((state & (1 << 1)) && ((state & (1 << 2)) == 0))
-//	    speed[BACK_INDEX] = 10;
-//	else if ((state & (1 << 1)) && (state & (1 << 2)))
-//	    speed[BACK_INDEX] = -10;
-//	else if ((state & (1 << 1)) == 0)
-//	    speed[BACK_INDEX] = 0;
+#ifdef USB_CMD_CONTROL
+	//Force user to go into curb climbing mode
+	if (usb_climb_state == 1){
+	    button_prev_state = 1;
+	}
 #endif
 
 #ifdef ONE_BUTTON_CONTROL_CURB_CLIMBING
 	//when button3 is pressed, Extend climbing wheel until both wheel touches the ground
-	if (((BITCHECK(button_state,2) || button_prev_state == 1) || usb_climb_state == 1)
-		&& climb_first_iteration == 1) {
+	if ((BITCHECK(button_state,2) || button_prev_state == 1) && climb_first_iteration == 1) {
 	    button_prev_state = 1;
-	    //Put both leg to same initial position for easier curb climbing mode detection
+	    //Put both leg to same initial zero position for easier curb climbing mode detection
 	    if (abs(encoderFront.signed_encoder_pos) >= 50 || abs(encoderBack.signed_encoder_pos) >= 50) {
 		goto_pos(0, frontClimb_pid);
 		goto_pos(0, backClimb_pid);
@@ -614,13 +602,7 @@ void Task_Climbing(void *param) {
 		pid_reset(backClimb_pid);
 		lifting_mode = NORMAL;
 	    }
-
 	}
-
-#endif
-
-#ifdef USB_CMD_CONTROL
-
 #endif
 
 	//*****VERY IMPORTANT AND MUST NOT BE COMMENTED OUT**********************************//
@@ -666,6 +648,7 @@ void Task_Climbing(void *param) {
 
 void Task_USB(void *param) {
     while (1) {
+#if USB_CMD_CONTROL
 	if (usbBuffer[0] == USB_STOP) {
 	    lifting_mode = STOP;
 	    xTaskNotify(task_normalDrive, 0, eNoAction);
@@ -682,13 +665,16 @@ void Task_USB(void *param) {
 	    usb_climb_state = 1;
 	}
 	usbBuffer[0] = 0;
-
+#endif
 	vTaskDelay(1000);
-
     }
 }
 
-void LED_Mode_Configuration(Operation_Mode mode) {
+/**@brief  Lights out LED based on differrent operation mode.
+ * @param  mode 	Refer to Operation_Mode enum.
+ * @retval None.
+ */
+static void LED_Mode_Configuration(Operation_Mode mode) {
     switch (mode) {
 	case NORMAL:
 	    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
@@ -709,8 +695,11 @@ void LED_Mode_Configuration(Operation_Mode mode) {
     }
 }
 
-//Hub motor move forward  by preset dist
-bool climbingForward(float dist) {
+/**@brief  Hub motor move forward  by preset dist.
+ * @param  dist Distance to be moved by hub motor
+ * @retval True if climb forward the specified distance.
+ */
+static bool climbingForward(float dist) {
     static uint32_t prev_tick = 0;
     static int32_t prev_enc;
     static bool first_loop = true;
@@ -718,17 +707,22 @@ bool climbingForward(float dist) {
 
     float rps = (dist >= 0) ? 1.0 : -1.0; //rad/s
 
+    //Initialize static variable if first loop
     if (first_loop) {
 	prev_enc = hub_encoder_feedback.encoder_2;
 	prev_tick = HAL_GetTick();
 	first_loop = false;
 	dist_remaining = dist;
     }
+    //As a fail safe to make sure the hub is functional
+    //Sometime, the connector is loose and cause error in transmission
     if (xTaskGetTickCount() - last_hub_rx_t > 1500) {
 	lifting_mode = DANGER;
 	xTaskNotify(task_control, 0, eNoAction);
 	return false;
     }
+
+    //Calculate distance travelled and save the remaining distance to local static for next call
     if (dist / dist_remaining >= 0 && first_loop == false) {
 	hub_motor_status = HubMotor_SendCommand(rps, rps);
 	if (HAL_GetTick() - prev_tick > 1) {
@@ -747,8 +741,12 @@ bool climbingForward(float dist) {
     }
 }
 
-//Control rear and back wheel to set encoder position using PID controller
-bool goto_pos(int enc, PID_t pid_t) {
+/**@brief  Control rear and back wheel to set encoder position using PID controller.
+ * @param  enc 	 Position setpoint for the pid controller
+ * @param  pid_t Controller for position
+ * @retval True if motor has reached desired position.
+ */
+static bool goto_pos(int enc, PID_t pid_t) {
     int cur_enc_pos;
     if (pid_t == frontClimb_pid) {
 	cur_enc_pos = (int) encoderFront.encoder_pos;
@@ -768,7 +766,6 @@ bool goto_pos(int enc, PID_t pid_t) {
 		speed[FRONT_INDEX] = 0;
 		pid_reset(frontClimb_pid);
 	    }
-
 	    return true;
 
 	}
@@ -781,7 +778,6 @@ bool goto_pos(int enc, PID_t pid_t) {
 	cur_enc_pos = (int) encoderBack.encoder_pos;
 	if (pid_need_compute(backClimb_pid) && fabs(enc - cur_enc_pos) > 5) {
 	    // Read process feedback
-	    //following code is causing back turn
 	    if (cur_enc_pos > MAX_BACK_ALLOWABLE_ENC)
 		cur_enc_pos -= 4096 * BACK_GEAR_RATIO;
 	    if (enc >= MAX_BACK_ALLOWABLE_ENC)
@@ -799,17 +795,21 @@ bool goto_pos(int enc, PID_t pid_t) {
 	    return true;
 	}
 	else {
-//			speed[BACK_INDEX] = 0;
-//			if(fabs(speed[BACK_INDEX]) < 5)
-//				pid_reset(backClimb_pid);
+//	    speed[BACK_INDEX] = 0;
+//	    if (fabs(speed[BACK_INDEX]) < 5)
+//		pid_reset(backClimb_pid);
 	    return false;
 	}
     }
     return false;
 }
 
-//Lifting process with desired front and back encoder position
-bool in_climb_process(int front_enc, int back_enc) {
+/**@brief  Lifting process with desired front and back encoder position.
+ * @param  front_enc 	 Position setpoint for the front pid controller
+ * @param  back_enc	 Position setpoint for the back pid controller
+ * @retval True if both motor has reached desired setpoint.
+ */
+static bool in_climb_process(int front_enc, int back_enc) {
     bool is_lifting;
     static bool first_loop = true;
     static uint32_t prev_angle_tick = 0;
@@ -822,9 +822,11 @@ bool in_climb_process(int front_enc, int back_enc) {
 	first_loop = false;
     }
 
-//1. lift the front climbing wheel up until it reach it maximum pos
-//The process is controlled by PID on the front climbing wheel
-//the maximum pos is when the climbing wheel is below the wheelchair base
+    /*
+     * 1. lift the front climbing wheel up until it reach it maximum pos
+     * The process is controlled by PID on the front climbing wheel
+     * the maximum pos is when the climbing wheel is below the wheelchair base
+     */
     goto_pos(front_enc, frontClimb_pid);
     goto_pos(back_enc, backClimb_pid);
 
@@ -833,10 +835,12 @@ bool in_climb_process(int front_enc, int back_enc) {
     else
 	is_lifting = false;
 
-//2. During lifting, due to fixed point at the back climbing wheel.
-//The wheelchair would be pulled back if the back wheel not traveling while the its lifting
-//Therefore, lifting of back wheel and hub motor need to work at the same time to make sure the wheelchair is not moving back.
-//Pull back of wheelchair would cause the front climbing wheel to slip from the curb
+    /*
+     *2. During lifting, due to fixed point at the back climbing wheel.
+     *The wheelchair would be pulled back if the back wheel not traveling while the its lifting
+     *The Therefore, lifting of back wheel and hub motor need to work at the same time to make sure the wheelchair is not moving back.
+     *The Pull back of wheelchair would cause the front climbing wheel to slip from the curb
+     */
     if (is_lifting == true && speed[BACK_INDEX] != 0) {
 	double dt = (HAL_GetTick() - prev_angle_tick) / (float) FREQUENCY;
 	climbForward_speed = CLIMBING_LEG_LENGTH * (sin(TO_RAD(prev_angle)) - sin(TO_RAD(encoderBack.angleDeg))) / dt; //unit: m/s,

@@ -27,9 +27,15 @@
 extern "C" {
 #endif
 
-#define BUTTON_CONTROL
+/*Among the three control, choose only one
+ * BUTTON_CONTROL:Manual control mode
+ * ONEBUTTON:	Button will initial the climbing procedure
+ * USB_CONTROL: Require computer GUI
+ */
+//#define BUTTON_CONTROL
 //#define USB_CONTROL
 #define ONE_BUTTON_CONTROL_CURB_CLIMBING
+
 //#define USB_CMD_CONTROL
 
 /* Includes ------------------------------------------------------------------*/

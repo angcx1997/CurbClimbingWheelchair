@@ -328,6 +328,7 @@ void SystemClock_Config(void) {
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     switch (GPIO_Pin) {
+	/* Callback from joystick reading*/
 	case AD_BUSY_Pin: {
 	    int16_t adc_rawData[8];
 	    JoystickHandle joystick_handler_irq;
@@ -345,16 +346,19 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 }
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
-//Left Encoder Callback
     static CAN_RxHeaderTypeDef canRxHeader;
     uint8_t incoming[8];
     if (hcan == &hcan1) {
 	HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &canRxHeader, incoming);
+	/**Process the angle with gear ratio
+	 * 4096 is encoder single turn value
+	 * 24 is the encoder maximum multi-turn value
+	 * Need to make sure and check the encoder value in the correct direction
+	 */
+	//Left encoder callback
 	if (incoming[1] == ENC_ADDR_LEFT) {
 	    ENCODER_Sort_Incoming(incoming, &encoderBack);
-	    //Process the angle and GR
-	    //4096 is encoder single turn value
-	    //Need to check the encoder value in the correct direction
+
 	    encoderBack.encoder_pos = (uint32_t) ((4096 * BACK_GEAR_RATIO) - encoderBack.encoder_pos)
 		    % (4096 * BACK_GEAR_RATIO);
 	    encoderBack.angleDeg = (float) encoderBack.encoder_pos / (4096 * BACK_GEAR_RATIO) * 360 + 36.587;
@@ -366,6 +370,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 	    last_can_rx_t[BACK_INDEX] = xTaskGetTickCountFromISR();
 
 	}
+	//Right encoder callback
 	if (incoming[1] == ENC_ADDR_RIGHT) {
 	    ENCODER_Sort_Incoming(incoming, &encoderFront);
 	    if (4096 * 24 - encoderFront.encoder_pos < 30000) {
@@ -406,10 +411,15 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	    }
 	}
     }
+#if 0
     //Sabertooth Callback
-//    if (huart->Instance == USART6) {
-//	MotorProcessReply(&sabertooth_handler, motor_receive_buf, sizeof(motor_receive_buf));
-//    }
+    //TODO: Didnt use as not enough pin for data reception
+    //Note that DO NOT use the same uart for motor speed transmission and data transmission
+    //Will cause latency when transmitting speed and really dangerous
+    if (huart->Instance == USART6) {
+	MotorProcessReply(&sabertooth_handler, motor_receive_buf, sizeof(motor_receive_buf));
+    }
+#endif
 
     //curb change detection callback
     if (huart->Instance == USART1) {
@@ -424,24 +434,24 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	    // diff = detectCurb_down(distanceNoNoise);
 	    if (prev_dist == 0)
 		prev_dist = distanceNoNoise;
-/*
-	    diff = distanceNoNoise - prev_dist;
-	    if(diff >= 15 && lifting_mode == NORMAL){
-	    	//STOP the base wheel
-	    	lifting_mode = STOP;
-	    	xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
-	    	USB_TransmitData(CURB_CHANGE);
-	    }
-	    else if (diff >= 15 && lifting_mode == CURB_DETECTED){
-	    	//stop the base wheel
-	    	lifting_mode = NORMAL;
-	    	xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
-	    	USB_TransmitData(USB_MOVE);
-	    }
-	    else if(lifting_mode == NORMAL){
-	    	USB_TransmitData(USB_MOVE);
-	    }
-*/
+	    /*
+	     diff = distanceNoNoise - prev_dist;
+	     if(diff >= 15 && lifting_mode == NORMAL){
+	     //STOP the base wheel
+	     lifting_mode = STOP;
+	     xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
+	     USB_TransmitData(CURB_CHANGE);
+	     }
+	     else if (diff >= 15 && lifting_mode == CURB_DETECTED){
+	     //stop the base wheel
+	     lifting_mode = NORMAL;
+	     xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
+	     USB_TransmitData(USB_MOVE);
+	     }
+	     else if(lifting_mode == NORMAL){
+	     USB_TransmitData(USB_MOVE);
+	     }
+	     */
 	    if (distanceNoNoise >= 20 && lifting_mode == NORMAL) {
 		//stop the base wheel completely
 		lifting_mode = STOP;
@@ -473,17 +483,26 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 }
 
+/**
+ * @brief  Software timer to Toggle buzzer periodically.
+ * @param  xTimer: freertos software timer
+ * @retval None
+ */
 void Buzzer_Timer_Callback(TimerHandle_t xTimer) {
-//    static uint8_t count = 0;
-//    count = (buzzer_expiry_count == 0) ? 0 : count++;
+    /* Do not use a block time if calling a timer API function
+     from a timer callback function, as doing so could cause a
+     deadlock!
+     */
     HAL_GPIO_TogglePin(Buzzer_GPIO_Port, Buzzer_Pin);
 
-//    if (count >= buzzer_expiry_count*2)
-//	/* Do not use a block time if calling a timer API function
-//	 from a timer callback function, as doing so could cause a
-//	 deadlock! */
-//	xTimerStop(xTimer, 0);
-
+#if 0
+    //TODO: If want timer to beep at "expiry_count
+    //Havent tested
+    static uint8_t count = 0;
+    count = (buzzer_expiry_count == 0) ? 0 : count++;
+    if (count >= buzzer_expiry_count * 2)
+	xTimerStop(xTimer, 0);
+#endif
 }
 /* USER CODE END 4 */
 
