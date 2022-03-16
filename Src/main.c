@@ -35,6 +35,7 @@
 #include "mpu6050.h"
 #include "bd25l.h"
 #include "X2_6010S.h"
+#include "utilities.h"
 //#include "wheelchair.h"
 #include "PID.h"
 #include "Sabertooth.h"
@@ -400,7 +401,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		+ (uint16_t) receive_buf[6] + (uint16_t) receive_buf[7] + (uint16_t) receive_buf[8]
 		+ (uint16_t) receive_buf[9] + (uint16_t) receive_buf[10] + (uint16_t) receive_buf[11]
 		+ (uint16_t) receive_buf[12] + (uint16_t) receive_buf[13];
-	if ((uint8_t) sum == receive_buf[14]) {
+#if 0
+	//TODO: Try checksum calculation
+	uint16_t sum = CalculateChecksum_16bit(receive_buf, 14);
+#endif
+	if ((sum & 0xFF) == receive_buf[14]) {
 	    //Encoder Feedback
 	    if (receive_buf[0] == 0xAA && receive_buf[1] == 0xA4 && receive_buf[3] == 0x00 && receive_buf[4] == 0x00) {
 		hub_encoder_feedback.encoder_1 = (receive_buf[9] << 24) + (receive_buf[8] << 16) + (receive_buf[7] << 8)

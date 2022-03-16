@@ -227,6 +227,9 @@ void Task_Keyboard(void *param) {
 	else
 	    BITCLEAR(button_state, 2);
 
+	//TODO: Check the button feedback function
+	//Use button 0 to get out of STOP mode and enter into curb detected
+	//Where the system is only allowed to move backward
 	if (BITCHECK(button_state,0) && lifting_mode == STOP){
 	    lifting_mode = CURB_DETECTED;
 	    xTaskNotify(task_normalDrive, 0, eNoAction);
