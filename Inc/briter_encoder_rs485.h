@@ -76,7 +76,15 @@ typedef enum {
  * @}
  */
 
-/** @defgroup L3GD20_Exported_Functions
+/** @defgroup Briter RS485 Error Message
+ * @{
+ */
+#define BRITER_RS485_ERROR	-1
+/**
+ * @}
+ */
+
+/** @defgroup Briter_RS485_Exported_Functions
  * @{
  */
 /**
@@ -91,16 +99,25 @@ HAL_StatusTypeDef BRITER_RS485_Init(Briter_Encoder_t* handler,uint8_t address, U
 /**
 * @brief  Get encoder value though POLLING MODE.
 * @param  handler: encoder handler to give address and store encoder return value
-* @retval HAL status
+* @retval encoder value, -1 if error occurs
 */
-HAL_StatusTypeDef BRITER_RS485_GetEncoderValue(Briter_Encoder_t* handler);
+uint32_t BRITER_RS485_GetEncoderValue(Briter_Encoder_t* handler);
 
 /**
-* @brief  Get encoder value though DMA.
+* @brief  Send info to encoder to read through DMA.
 * @param  handler: encoder handler
 * @retval HAL status
+* @note   If complete, DMA_TX_Cplt will be called if DMA interrupt is activated
 */
-HAL_StatusTypeDef BRITER_RS485_GetEncoderValue_DMA(Briter_Encoder_t* handler);
+HAL_StatusTypeDef BRITER_RS485_GetEncoderValue_TX_DMA(Briter_Encoder_t* handler);
+
+/**
+* @brief  Get encoder value though DMA during reception.
+* @param  handler: encoder handler
+* @retval HAL status
+* @note   Use inside DMA RX Idle Callback
+*/
+uint32_t BRITER_RS485_GetEncoderValue_RX_DMA(Briter_Encoder_t* handler, uint8_t *pData);
 
 /**
 * @brief Set encoder baudrate.
