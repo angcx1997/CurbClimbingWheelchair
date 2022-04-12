@@ -84,7 +84,7 @@ uint32_t BRITER_RS485_GetEncoderValue(Briter_Encoder_t *handler) {
     return encoder_value;
 }
 
-HAL_StatusTypeDef BRITER_RS485_GetEncoderValue_TX_DMA(Briter_Encoder_t *handler) {
+HAL_StatusTypeDef BRITER_RS485_GetEncoderValue_DMA(Briter_Encoder_t *handler) {
     //Send encoder data
     Encoder_TX_t send_t;
     memset(&send_t, 0, sizeof(send_t));
@@ -93,7 +93,7 @@ HAL_StatusTypeDef BRITER_RS485_GetEncoderValue_TX_DMA(Briter_Encoder_t *handler)
     return Encoder_Transmit_DMA(handler->huart, send_t.buf, sizeof(send_t.buf));
 }
 
-uint32_t BRITER_RS485_GetEncoderValue_RX_DMA(Briter_Encoder_t *handler, uint8_t *pData) {
+uint32_t BRITER_RS485_GetEncoderValue_RX_Callback(Briter_Encoder_t *handler, uint8_t *pData) {
     //Check receive buffer
     if (Encoder_CheckRX(pData, (uint8_t) (handler->addr), ENC_READ) != HAL_OK)
 	return BRITER_RS485_ERROR;

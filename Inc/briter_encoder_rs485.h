@@ -1,10 +1,38 @@
-/*
- * briter_encoder_rs485.h
- *
- *  Created on: 11 Apr 2022
- *      Author: ray
- */
+/**
+  ******************************************************************************
+  * @file    briter_encoder_rs485.h
+  * @author  Ang Chin Xian
+  * @brief   Briter encoder RS485 Driver.
+  *          This file provides firmware functions to manage the following
+  *          functionalities of the encoder via RS485:
+  *           + Initialization functions
+  *           + Configuration functions
+  *           + Read and get function
+  *
+  ==============================================================================
+                        ##### How to use this driver #####
+  ==============================================================================
+  1. Create handler to hold Briter_Encoder_t and input the correct address and
+      UART handler for the specific driver
+  2. Make sure baudrate is match,  data length 8 bit, 0 parity, 1 stop bit
+  3. Default encoder address is 1 and baudrate is 9600bps if no configure
+  4. All configuration function is performed through polling mode
+  5. For reading encoder value,
+      - In this driver, user is not interested in getting single turn encoder value
+      - Encoder value is depends on the hardware itself
+      - Polling Mode
+	  BRITER_RS485_GetEncoderValue()
+      - DMA Mode
+	  a. Call BRITER_RS485_GetEncoderValue_DMA() in main
+	  b. Add HAL_UART_DMA_TxCplt_Callback() to code
+	  c. In TxCmpltCallback, add
+		HAL_UARTEx_ReceiveToIdle_DMA(&huart2, (uint8_t *) RxBuf, RxBuf_SIZE);
+		__HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT);
+	  d. Add HAL_UARTEx_RxEventCallback()
+	      Call BRITER_RS485_GetEncoderValue_RX_Callback()
 
+
+*/
 #ifndef BRITER_ENCODER_RS485_H_
 #define BRITER_ENCODER_RS485_H_
 
@@ -109,7 +137,7 @@ uint32_t BRITER_RS485_GetEncoderValue(Briter_Encoder_t* handler);
 * @retval HAL status
 * @note   If complete, DMA_TX_Cplt will be called if DMA interrupt is activated
 */
-HAL_StatusTypeDef BRITER_RS485_GetEncoderValue_TX_DMA(Briter_Encoder_t* handler);
+HAL_StatusTypeDef BRITER_RS485_GetEncoderValue_DMA(Briter_Encoder_t* handler);
 
 /**
 * @brief  Get encoder value though DMA during reception.
@@ -117,7 +145,7 @@ HAL_StatusTypeDef BRITER_RS485_GetEncoderValue_TX_DMA(Briter_Encoder_t* handler)
 * @retval HAL status
 * @note   Use inside DMA RX Idle Callback
 */
-uint32_t BRITER_RS485_GetEncoderValue_RX_DMA(Briter_Encoder_t* handler, uint8_t *pData);
+uint32_t BRITER_RS485_GetEncoderValue_DMA_Callback(Briter_Encoder_t* handler, uint8_t *pData);
 
 /**
 * @brief Set encoder baudrate.
