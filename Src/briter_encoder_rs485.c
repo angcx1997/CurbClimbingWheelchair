@@ -79,8 +79,8 @@ uint32_t BRITER_RS485_GetEncoderValue(Briter_Encoder_t *handler) {
     if (Encoder_CheckRX(receive_buf, (uint8_t) (handler->addr), ENC_READ) != HAL_OK)
 	return BRITER_RS485_ERROR;
 
-    uint32_t encoder_value = receive_buf[4] << (3 * 8) | receive_buf[5] << (2 * 8) | receive_buf[6] << (1 * 8)
-	    | receive_buf[7] << (0 * 8);
+    uint32_t encoder_value = receive_buf[3] << (3 * 8) | receive_buf[4] << (2 * 8) | receive_buf[5] << (1 * 8)
+	    | receive_buf[6] << (0 * 8);
     return encoder_value;
 }
 
@@ -93,12 +93,12 @@ HAL_StatusTypeDef BRITER_RS485_GetEncoderValue_DMA(Briter_Encoder_t *handler) {
     return Encoder_Transmit_DMA(handler->huart, send_t.buf, sizeof(send_t.buf));
 }
 
-uint32_t BRITER_RS485_GetEncoderValue_RX_Callback(Briter_Encoder_t *handler, uint8_t *pData) {
+uint32_t BRITER_RS485_GetEncoderValue_DMA_Callback(Briter_Encoder_t *handler, uint8_t *pData) {
     //Check receive buffer
     if (Encoder_CheckRX(pData, (uint8_t) (handler->addr), ENC_READ) != HAL_OK)
 	return BRITER_RS485_ERROR;
-    uint32_t encoder_value = pData[4] << (3 * 8) | pData[5] << (2 * 8) | pData[6] << (1 * 8)
-	    | pData[7] << (0 * 8);
+    uint32_t encoder_value = pData[3] << (3 * 8) | pData[4] << (2 * 8) | pData[5] << (1 * 8)
+	    | pData[6] << (0 * 8);
     return encoder_value;
 }
 
@@ -252,8 +252,8 @@ static void Encoder_Send_Construct(Encoder_TX_t *txbuf, RS485_Enc_Func_t func, u
     txbuf->send_info.register_number[0] = (uint8_t) ((register_number >> 8) & 0xFF);
     txbuf->send_info.register_number[1] = (uint8_t) ((register_number >> 0) & 0xFF);
     uint16_t crc = Calculate_CRC(txbuf->buf, sizeof(txbuf->buf) - 2);
-    txbuf->send_info.crc[0] = (uint8_t) ((crc >> 8) & 0xFF);
-    txbuf->send_info.crc[1] = (uint8_t) ((crc >> 0) & 0xFF);
+    txbuf->send_info.crc[0] = (uint8_t) ((crc >> 0) & 0xFF);
+    txbuf->send_info.crc[1] = (uint8_t) ((crc >> 8) & 0xFF);
 }
 
 /**
@@ -279,7 +279,7 @@ static HAL_StatusTypeDef Encoder_CheckRX(uint8_t *pData, uint8_t address, RS485_
 	total_byte = 8 - 2; //8 is total number of byte, 2 is byte for CRC
     }
     uint16_t crc = Calculate_CRC(pData, total_byte);
-    if (pData[total_byte] != (uint8_t) ((crc >> 8) & 0xFF) || pData[total_byte + 1] != (uint8_t) ((crc >> 0) & 0xFF))
+    if (pData[total_byte] != (uint8_t) ((crc >> 0) & 0xFF) || pData[total_byte + 1] != (uint8_t) ((crc >> 8) & 0xFF))
 	return HAL_ERROR;
 
     return HAL_OK;
@@ -293,7 +293,7 @@ static HAL_StatusTypeDef Encoder_CheckRX(uint8_t *pData, uint8_t address, RS485_
  * @retval HAL status
  */
 static HAL_StatusTypeDef Encoder_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size) {
-    return HAL_UART_Transmit(huart, pData, Size, 5);
+    return HAL_UART_Transmit(huart, pData, Size, 10);
 }
 
 /**
@@ -315,6 +315,6 @@ static HAL_StatusTypeDef Encoder_Transmit_DMA(UART_HandleTypeDef *huart, uint8_t
  * @retval HAL status
  */
 static HAL_StatusTypeDef Encoder_Receive(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size) {
-    return HAL_UART_Receive(huart, pData, Size, 5);
+    return HAL_UART_Receive(huart, pData, Size, 10);
 }
 
