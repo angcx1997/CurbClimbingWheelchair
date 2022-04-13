@@ -21,16 +21,17 @@
       - In this driver, user is not interested in getting single turn encoder value
       - Encoder value is depends on the hardware itself
       - Polling Mode
-	  BRITER_RS485_GetEncoderValue()
+	  BRITER_RS485_GetEncoderValue
       - DMA Mode
 	  a. Call BRITER_RS485_GetEncoderValue_DMA() in main
+	   *call __HAL_DMA_DISABLE_IT(&hdma_usart, DMA_IT_HT) if half of the number of byte is corrupted
 	  b. Add HAL_UART_DMA_TxCplt_Callback() to code
 	  c. In TxCmpltCallback, add
-		HAL_UARTEx_ReceiveToIdle_DMA(&huart2, (uint8_t *) RxBuf, RxBuf_SIZE);
+		HAL_UART_Receive_DMA(&huart2, RxBuf, sizeof(RxBuf));
 		__HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT);
-	  d. Add HAL_UARTEx_RxEventCallback()
-	      Call BRITER_RS485_GetEncoderValue_RX_Callback()
-
+	  d. Add HAL_UART_RxCpltCallback()
+	      Call BRITER_RS485_GetEncoderValue_DMA_Callback()
+      - Interrupt mode is not implemented
 
 */
 #ifndef BRITER_ENCODER_RS485_H_
