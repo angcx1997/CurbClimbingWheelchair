@@ -1,4 +1,4 @@
-# Climbing Wheelchair
+# Curb Climbing Wheelchair
 
 This repo focus on the program  in the embedded system(STM32F429VI) on the wheelchair.
 
@@ -25,9 +25,9 @@ Therefore, if the code regenerated through CubeMX, the code added will be saved.
 | --- | ----------- |
 | Joystick (AD7606) | SPI1 | 
 | Climbing motor (BD25L) | Rear: TIM8 CH4  Back: TIM1 CH2 |
-| Climbing motor encoder | CAN1 / DMA1 | 
+| Climbing motor encoder | CAN1| 
 | MPU6050 | I2C1 | 
-| Hub Motor (X2_6010S) | UART3 | 
+| Hub Motor (X2_6010S) | RS485/UART3 | 
 | Base motor (Sabertooth | TIM3 (Right)CH1  (Left)CH2| 
 | Driving Encoder | RS485/UART4 |
 
