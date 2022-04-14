@@ -29,6 +29,7 @@ Therefore, if the code regenerated through CubeMX, the code added will be saved.
 | MPU6050 | I2C1 | 
 | Hub Motor (X2_6010S) | UART3 | 
 | Base motor (Sabertooth | TIM3 (Right)CH1  (Left)CH2| 
+| Driving Encoder | RS485/UART4 |
 
 ## Usage
 In normal operation mode, the wheelchair could be used as usual by controlled through joystick input.
