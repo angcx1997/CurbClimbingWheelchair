@@ -76,13 +76,14 @@ static uint8_t send_buf[9] = { 0 };
  */
 static int clamp(int x, int min, int max);
 
-/* Writes a Packet Serial command into a buffer.
- * param[address]	The address of the Sabertooth. By default, this is 128.
- * param[command] 	The command number.
- * param[value]   	The command value.
- * param[data]    	Extra data.
- * param[length]  	The number of bytes of extra data.
- * return        	How many bytes were written. This always equals 5 + length,
+/**********************************************************************
+ * @brief Writes a Packet Serial command into a buffer.
+ * @param[address]	The address of the Sabertooth. By default, this is 128.
+ * @param[command] 	The command number.
+ * @param[value]   	The command value.
+ * @param[data]    	Extra data.
+ * @param[length]  	The number of bytes of extra data.
+ * @return        	How many bytes were written. This always equals 5 + length,
  * 			unless length is 0, in which case it equals 4.
  */
 static void writeSabertoothCommand(Sabertooth_Handler *st_handler, uint8_t command, uint8_t value, const uint8_t *data, uint8_t length);

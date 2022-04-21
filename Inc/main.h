@@ -150,6 +150,14 @@ void Task_USB(void *param);
 #define AD_RST_GPIO_Port GPIOC
 #define AD_CV_Pin GPIO_PIN_5
 #define AD_CV_GPIO_Port GPIOC
+#define Base_Encoder_TX_Pin GPIO_PIN_0
+#define Base_Encoder_TX_GPIO_Port GPIOA
+#define Base_Encoder_RX_Pin GPIO_PIN_1
+#define Base_Encoder_RX_GPIO_Port GPIOA
+#define Battery_TX_Pin GPIO_PIN_2
+#define Battery_TX_GPIO_Port GPIOA
+#define Battery_RX_Pin GPIO_PIN_3
+#define Battery_RX_GPIO_Port GPIOA
 #define ClimbM_IO_FR2_Pin GPIO_PIN_0
 #define ClimbM_IO_FR2_GPIO_Port GPIOB
 #define ClimbM_IO_EN2_Pin GPIO_PIN_1
