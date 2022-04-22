@@ -43,21 +43,38 @@
 #include "joystick.h"
 #include "differentialDrive.h"
 #include "DifferentialDrivetoSabertooth.h"
+#include "briter_encoder_rs485.h"
 #include "tfmini.h"
 #include "usb_device.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef struct{
+    TickType_t max_tick;
+    TickType_t new_tick;
+    TickType_t avg_tick;
+    TickType_t sum_tick;
+    uint32_t count;
 
+}Debug_Tick_t;
+typedef struct{
+    uint8_t button1:1;
+    uint8_t button2:1;
+    uint8_t button3:1;
+}button_state_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
 //#define DEBUGGING
-#define MAX(x, y) (((x) > (y)) ? (x) : (y))
-#define MIN(x, y) (((x) < (y)) ? (x) : (y))
+#ifndef MAX
+    #define MAX(x, y) (((x) > (y)) ? (x) : (y))
+#endif
+#ifndef MIN
+    #define MIN(x, y) (((x) < (y)) ? (x) : (y))
+#endif
 #define TO_RAD(x) x * M_PI / 180
 #define TO_DEG(x) x * 180 / M_PI
 
@@ -86,11 +103,13 @@ extern TIM_HandleTypeDef htim8;
 
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart3;
+extern UART_HandleTypeDef huart4;
 extern UART_HandleTypeDef huart6;
 extern DMA_HandleTypeDef hdma_usart1_rx;
 extern DMA_HandleTypeDef hdma_usart1_tx;
 extern DMA_HandleTypeDef hdma_usart3_rx;
 extern DMA_HandleTypeDef hdma_usart3_tx;
+extern DMA_HandleTypeDef hdma_uart4_rx;
 extern DMA_HandleTypeDef hdma_usart6_rx;
 extern DMA_HandleTypeDef hdma_usart6_tx;
 
@@ -131,6 +150,7 @@ Motor_TypeDef rearMotor, backMotor;
 
 /*Used to store button state of 3 different button*/
 uint8_t button_state = 0;
+button_state_t button_state_test = {0};
 
 JoystickHandle *joystick_ptr = NULL;
 Operation_Mode lifting_mode = RETRACTION;
@@ -163,6 +183,10 @@ uint8_t finish_climbing_flag = 0; //1 if climbing motion finish
 uint8_t usb_climb_state = 0;
 
 extern uint8_t buzzer_expiry_count;
+
+//Base wheel control
+Briter_Encoder_t base_encoder[2];
+Debug_Tick_t encoder_tick_taken = {0};
 /* USER CODE END Variables */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -222,6 +246,10 @@ void Task_Keyboard(void *param) {
 	Button_FilteredInput(&button2, 30);
 	Button_FilteredInput(&button3, 30);
 
+	button_state_test.button1 = (button1.state == 1)?1:0;
+	button_state_test.button2 = (button2.state == 1)?1:0;
+	button_state_test.button3 = (button3.state == 1)?1:0;
+
 	if (button1.state == 1)
 	    BITSET(button_state, 0);
 	else
@@ -259,13 +287,23 @@ void Task_NormalDrive(void *param) {
     Gear_Level gear_level = GEAR1; //change the speed level if need higher speed
     Sabertooth_Handler sabertooth_handler;
 
+    //Initialize encoder sensor for base wheel
+    BRITER_RS485_Init(&(base_encoder[0]), 0x01, &huart4);
+    BRITER_RS485_Init(&(base_encoder[1]), 0x02, &huart4);
     //Initialize base wheel
     DDrive_Init(&differential_drive_handler, FREQUENCY);
     MotorInit(&sabertooth_handler, 128, &huart6);
     MotorStartup(&sabertooth_handler);
     MotorStop(&sabertooth_handler);
+    encoder_tick_taken.count = 1;
     while (1) {
-
+	TickType_t start_t = xTaskGetTickCount();
+	BRITER_RS485_GetEncoderValue(&(base_encoder[0]));
+	encoder_tick_taken.new_tick = xTaskGetTickCount() - start_t;
+	encoder_tick_taken.max_tick = MAX(encoder_tick_taken.new_tick, encoder_tick_taken.max_tick);
+	encoder_tick_taken.sum_tick += encoder_tick_taken.new_tick;
+	encoder_tick_taken.avg_tick = encoder_tick_taken.sum_tick / encoder_tick_taken.count++;
+//	BRITER_RS485_GetEncoderValue(&(base_encoder[1]));
 	if (lifting_mode == NORMAL) {
 	    //When user in normal driving mode
 	    LED_Mode_Configuration(NORMAL);
@@ -343,6 +381,10 @@ void Task_Climb_Sensor(void *param) {
     //Initialize climbing encoder sensor and start front distance sensor data reception
     ENCODER_Init();
     HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
+
+//    //Reset encoder position
+//    ENCODER_Set_ZeroPosition(&encoderBack);
+//    ENCODER_Set_ZeroPosition(&encoderFront);
 
     //Ensure periodic execution
     TickType_t tick = xTaskGetTickCount();

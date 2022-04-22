@@ -69,9 +69,9 @@ uint32_t BRITER_RS485_GetEncoderValue(Briter_Encoder_t *handler) {
 	if (Encoder_CheckRX(receive_buf, (uint8_t) (handler->addr), ENC_READ) != HAL_OK)
 		return BRITER_RS485_ERROR;
 
-	uint32_t encoder_value = receive_buf[3] << (3 * 8) | receive_buf[4] << (2 * 8) | receive_buf[5] << (1 * 8)
+	handler->encoder_value = receive_buf[3] << (3 * 8) | receive_buf[4] << (2 * 8) | receive_buf[5] << (1 * 8)
 			| receive_buf[6] << (0 * 8);
-	return encoder_value;
+	return handler->encoder_value;
 }
 
 HAL_StatusTypeDef BRITER_RS485_GetEncoderValue_DMA(Briter_Encoder_t *handler) {
@@ -283,7 +283,7 @@ static HAL_StatusTypeDef Encoder_CheckRX(uint8_t *pData, uint8_t address, RS485_
  * @retval HAL status
  */
 static HAL_StatusTypeDef Encoder_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size) {
-	return HAL_UART_Transmit(huart, pData, Size, 10);
+	return HAL_UART_Transmit(huart, pData, Size, 20);
 }
 
 /**
@@ -305,6 +305,8 @@ static HAL_StatusTypeDef Encoder_Transmit_DMA(UART_HandleTypeDef *huart, uint8_t
  * @retval HAL status
  */
 static HAL_StatusTypeDef Encoder_Receive(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size) {
-	return HAL_UART_Receive(huart, pData, Size, 10);
+    HAL_StatusTypeDef status = HAL_UART_Receive(huart, pData, Size, 20);
+
+    return status;
 }
 

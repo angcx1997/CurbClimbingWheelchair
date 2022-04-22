@@ -8,14 +8,15 @@
 
 #include "stm32f4xx_hal.h"
 
+
 typedef struct
 {
 	GPIO_TypeDef* 	gpioPort;
-	uint16_t		gpioPin;
-	uint8_t			curRead;			/*!< Use to store and compare GPIO reading >*/
-	uint8_t			preRead;			/*!< Use to store and compare GPIO reading >*/
-	uint8_t   		state;				/*!< GPIO state by filtering the debounce >*/
-	uint32_t	    lastDebounceTime; 	/*!< Use to store moment button pressed >*/
+	uint16_t	gpioPin;
+	uint8_t		curRead;		/*!< Use to store and compare GPIO reading >*/
+	uint8_t		preRead;		/*!< Use to store and compare GPIO reading >*/
+	uint8_t   	state;			/*!< GPIO state by filtering the debounce >*/
+	uint32_t	lastDebounceTime; 	/*!< Use to store moment button pressed >*/
 }Button_TypeDef;
 
 /*
