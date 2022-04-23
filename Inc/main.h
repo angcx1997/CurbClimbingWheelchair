@@ -112,6 +112,7 @@ void Error_Handler(void);
 void Task_Control(void* param);
 void Task_Keyboard(void *param);
 void Task_NormalDrive(void *param);
+void Task_Navigation_Sensor(void* param);
 void Task_Climb_Sensor(void *param);
 void Task_Joystick(void *param);
 void Task_Climbing(void *param);

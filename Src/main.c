@@ -112,6 +112,7 @@ TaskHandle_t task_control;
 TaskHandle_t task_keyboard;
 TaskHandle_t task_normalDrive;
 TaskHandle_t task_climb_sensor;
+TaskHandle_t task_navigation_sensor;
 TaskHandle_t task_joystick;
 TaskHandle_t task_climbing;
 TaskHandle_t task_usb;
@@ -258,6 +259,8 @@ int main(void) {
     configASSERT(status == pdPASS);
     status = xTaskCreate(Task_Climb_Sensor, "Climb Sensor Task", 300, NULL, 2, &task_climb_sensor);
     configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Navigation_Sensor, "Navigation Sensor Task", 300, NULL, 2, &task_navigation_sensor);
+	configASSERT(status == pdPASS);
     status = xTaskCreate(Task_NormalDrive, "Normal Drive Task", 250, NULL, 2, &task_normalDrive);
     configASSERT(status == pdPASS);
     status = xTaskCreate(Task_USB, "USB Task", 250, NULL, 2, &task_usb);
