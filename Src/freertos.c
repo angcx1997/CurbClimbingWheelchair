@@ -217,6 +217,9 @@ void Task_Control(void *param) {
 	}
 }
 
+/**
+ * Button Interface
+ */
 void Task_Keyboard(void *param) {
 	/*
 	 * Use to store user button state
@@ -277,7 +280,8 @@ void Task_NormalDrive(void *param) {
 	MotorInit(&sabertooth_handler, 128, &huart6);
 	MotorStartup(&sabertooth_handler);
 	MotorStop(&sabertooth_handler);
-	encoder_tick_taken.count = 1;
+
+
 	while (1) {
 		if (lifting_mode == NORMAL) {
 			//When user in normal driving mode
@@ -331,42 +335,29 @@ void Task_NormalDrive(void *param) {
 }
 
 /**
- * This task will used to managed the data acquisition of sensor used for navigation
+ * This task will used to managed the data acquisition of sensor used for
+ * - Climbing
+ * 	1. Limit switch
+ * 	2. Encoder
+ * - Navigation
  * 	1. IMU
  * 	2. Encoder for base wheel
+ * - Common
+ * 	1. Curb detection sensor
+ * Each session is divided into data acquisition and error handling
  */
-void Task_Navigation_Sensor(void *param)
+void Task_Sensor(void *param)
 {
-	//Initialize encoder sensor for base wheel
-	BRITER_RS485_Init(&(base_encoder[0]), 0x01, &huart4);
-	BRITER_RS485_Init(&(base_encoder[1]), 0x02, &huart4);
-
-	while (1)
-	{
-		TickType_t start_t = xTaskGetTickCount();
-		BRITER_RS485_GetEncoderValue(&(base_encoder[0]));
-		encoder_tick_taken.new_tick = xTaskGetTickCount() - start_t;
-		encoder_tick_taken.max_tick = MAX(encoder_tick_taken.new_tick, encoder_tick_taken.max_tick);
-		encoder_tick_taken.sum_tick += encoder_tick_taken.new_tick;
-		encoder_tick_taken.avg_tick = encoder_tick_taken.sum_tick / encoder_tick_taken.count++;
-		//	BRITER_RS485_GetEncoderValue(&(base_encoder[1]));
-	}
-}
-
-void Task_Climb_Sensor(void *param) {
 	/*
-	 * Use to store sensor reading that would be use as climbing
-	 * These sensor are highly critical. Single malfunction will cause the climbing motion to be failed
+	 * Climbing
+	 * Following sensor are highly critical. Single malfunction will cause the climbing motion to be failed
 	 * Always make sure all sensor is in good condition
+	 * Stop the climbing process if sensor fault
 	 */
 
 	//Limit switch located on each individual climbing leg
 	//Initialize member
-	Button_TypeDef rearLS1, rearLS2, backLS1, backLS2;
-	memset(&rearLS1, 0, sizeof(Button_TypeDef));
-	memset(&rearLS2, 0, sizeof(Button_TypeDef));
-	memset(&backLS1, 0, sizeof(Button_TypeDef));
-	memset(&backLS2, 0, sizeof(Button_TypeDef));
+	Button_TypeDef rearLS1 = { 0 }, rearLS2 = { 0 }, backLS1 = { 0 }, backLS2 = { 0 };
 	rearLS1.gpioPort = LimitSW1_GPIO_Port;
 	rearLS1.gpioPin = LimitSW1_Pin;
 	rearLS2.gpioPort = LimitSW2_GPIO_Port;
@@ -380,15 +371,27 @@ void Task_Climb_Sensor(void *param) {
 	ENCODER_Init();
 	HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
 
-//    //Reset encoder position
-//    ENCODER_Set_ZeroPosition(&encoderBack);
-//    ENCODER_Set_ZeroPosition(&encoderFront);
+	//    //Reset encoder position
+	//    ENCODER_Set_ZeroPosition(&encoderBack);
+	//    ENCODER_Set_ZeroPosition(&encoderFront);
+
+	/*
+	 * Navigation
+	 * -Encoder
+	 * 	To keep track of wheel velocity
+	 */
+	//Initialize encoder sensor for base wheel
+	BRITER_RS485_Init(&(base_encoder[0]), 0x01, &huart4);
+	BRITER_RS485_Init(&(base_encoder[1]), 0x02, &huart4);
+	encoder_tick_taken.count = 1;
 
 	//Ensure periodic execution
 	TickType_t tick = xTaskGetTickCount();
 	const TickType_t period = pdMS_TO_TICKS(50);
-
-	while (1) {
+	while (1)
+	{
+		//******************************************************************************
+		/*Climbing Sensor Data Acquisition*/
 		//Read encoder data
 		ENCODER_Get_Angle(&encoderBack);
 		ENCODER_Get_Angle(&encoderFront);
@@ -412,14 +415,27 @@ void Task_Climb_Sensor(void *param) {
 		else
 			touch_down[BACK_INDEX] = 0;
 
-		//As a safety check to make sure encoder data is received
+		/*Error Handling*/
 		//If encoder is faulty, no data reception, suspend all task
 		if ((xTaskGetTickCount() - last_can_rx_t[0]) > 2000 || (xTaskGetTickCount() - last_can_rx_t[1]) > 2000) {
 			lifting_mode = DANGER;
 			xTaskNotify(task_control, 0, eNoAction);
 		}
 
-		//As a safety check for tf mini uart error
+		//******************************************************************************
+		/*Navigation sensor data acquisition*/
+		TickType_t start_t = xTaskGetTickCount();
+		BRITER_RS485_GetEncoderValue(&(base_encoder[0]));
+		encoder_tick_taken.new_tick = xTaskGetTickCount() - start_t;
+		encoder_tick_taken.max_tick = MAX(encoder_tick_taken.new_tick, encoder_tick_taken.max_tick);
+		encoder_tick_taken.sum_tick += encoder_tick_taken.new_tick;
+		encoder_tick_taken.avg_tick = encoder_tick_taken.sum_tick / encoder_tick_taken.count++;
+		//	BRITER_RS485_GetEncoderValue(&(base_encoder[1]));
+
+		//******************************************************************************
+		/*Common Sensor*/
+		//Distance sensor data acquisition is managed by DMA
+		//Error Handling
 		//UART error cause by noise flag, framing, overrun error happens during multibuffer dma communication
 		//TODO: Use Error callback function to re-initialize callback or act as a flag to reinstate reception
 		if (xTaskGetTickCount() - last_tf_mini_t > 200) {
@@ -430,11 +446,13 @@ void Task_Climb_Sensor(void *param) {
 	}
 }
 
+/**
+ * Joystick interface
+ * For acquisition of joystick data
+ */
 void Task_Joystick(void *param) {
-	/*
-	 * Use to process joystick data when receive data from irq
-	 */
-	//Note that the period cannot be shorter than 100
+
+	//Warning: Period cannot be shorter than 100
 	TickType_t tick = xTaskGetTickCount();
 	const TickType_t period = pdMS_TO_TICKS(100); //execution period
 
@@ -449,6 +467,7 @@ void Task_Joystick(void *param) {
 			Joystick_CalculatePos(&joystick_handler);
 		}
 		else {
+			//If no data is available, force reading to zero
 			joystick_handler.x = 0;
 			joystick_handler.y = 0;
 			//Re-initialize joystick and queue
