@@ -31,11 +31,21 @@
  *	 - Interrupt mode is not implemented
  *
  */
+
 #ifndef BRITER_ENCODER_RS485_H_
 #define BRITER_ENCODER_RS485_H_
 
 #include <stdint.h>
 #include <stm32f4xx.h>
+
+/** @name Encoder Characteristic
+ */
+/**@{*/
+#define BRITER_RS485_PPR			4096		/*~<Pulse per revolution*/
+#define BRITER_RS485_NO_OF_TURN		24			/*~<Maximum turn*/
+#define BRITER_RS485_MAX_VALUE	(BRITER_RS485_PPR * BRITER_RS485_NO_OF_TURN)
+/**@}*/
+
 
 /** Briter RS485 handler*/
 typedef struct {

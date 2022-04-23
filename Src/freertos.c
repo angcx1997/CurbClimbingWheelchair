@@ -56,8 +56,8 @@ typedef struct{
     TickType_t avg_tick;
     TickType_t sum_tick;
     uint32_t count;
-
 }Debug_Tick_t;
+
 typedef struct{
     uint8_t button1:1;
     uint8_t button2:1;
@@ -149,8 +149,7 @@ speedConfig speed_config = {
 Motor_TypeDef rearMotor, backMotor;
 
 /*Used to store button state of 3 different button*/
-uint8_t button_state = 0;
-button_state_t button_state_test = {0};
+button_state_t button_state = {0};
 
 JoystickHandle *joystick_ptr = NULL;
 Operation_Mode lifting_mode = RETRACTION;
@@ -246,29 +245,14 @@ void Task_Keyboard(void *param) {
 	Button_FilteredInput(&button2, 30);
 	Button_FilteredInput(&button3, 30);
 
-	button_state_test.button1 = (button1.state == 1)?1:0;
-	button_state_test.button2 = (button2.state == 1)?1:0;
-	button_state_test.button3 = (button3.state == 1)?1:0;
-
-	if (button1.state == 1)
-	    BITSET(button_state, 0);
-	else
-	    BITCLEAR(button_state, 0);
-
-	if (button2.state == 1)
-	    BITSET(button_state, 1);
-	else
-	    BITCLEAR(button_state, 1);
-
-	if (button3.state == 1)
-	    BITSET(button_state, 2);
-	else
-	    BITCLEAR(button_state, 2);
+	button_state.button1 = (button1.state == 1)?1:0;
+	button_state.button2 = (button2.state == 1)?1:0;
+	button_state.button3 = (button3.state == 1)?1:0;
 
 	//TODO: Check the button feedback function
 	//Use button 0 to get out of STOP mode and enter into curb detected
 	//Where the system is only allowed to move backward
-	if (BITCHECK(button_state,0) && lifting_mode == STOP){
+	if (button_state.button1 == 1 && lifting_mode == STOP){
 	    lifting_mode = CURB_DETECTED;
 	    xTaskNotify(task_normalDrive, 0, eNoAction);
 	}
@@ -491,18 +475,18 @@ void Task_Climbing(void *param) {
 
 #ifdef BUTTON_CONTROL
 	/*Button Control*/
-	if (BITCHECK(button_state, 0) && (BITCHECK(button_state,2) == 0))
+	if (button_state.button1 == 1 && button_state.button3 == 0)
 	    speed[FRONT_INDEX] = 10;
-	else if (BITCHECK(button_state, 0) && BITCHECK(button_state, 2))
+	else if (button_state.button1 == 1 && button_state.button3 == 1)
 	    speed[FRONT_INDEX] = -10;
-	else if (BITCHECK(button_state,0) == 0)
+	else if (button_state.button1 == 0)
 	    speed[FRONT_INDEX] = 0;
 
-	if (BITCHECK(button_state, 1) && (BITCHECK(button_state,2) == 0))
+	if (button_state.button2 == 1 && button_state.button3 == 0)
 	    speed[BACK_INDEX] = 10;
-	else if (BITCHECK(button_state, 1) && BITCHECK(button_state, 2))
+	else if (button_state.button2 == 1 && button_state.button3 == 1)
 	    speed[BACK_INDEX] = -10;
-	else if (BITCHECK(button_state,1) == 0)
+	else if (button_state.button2 == 0)
 	    speed[BACK_INDEX] = 0;
 #endif
 
@@ -515,7 +499,7 @@ void Task_Climbing(void *param) {
 
 #ifdef ONE_BUTTON_CONTROL_CURB_CLIMBING
 	//when button3 is pressed, Extend climbing wheel until both wheel touches the ground
-	if ((BITCHECK(button_state,2) || button_prev_state == 1) && climb_first_iteration == 1) {
+	if ((button_state.button3 == 1 || button_prev_state == 1) && climb_first_iteration == 1) {
 	    button_prev_state = 1;
 	    //Put both leg to same initial zero position for easier curb climbing mode detection
 	    if (abs(encoderFront.signed_encoder_pos) >= 50 || abs(encoderBack.signed_encoder_pos) >= 50) {
