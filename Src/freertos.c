@@ -182,7 +182,6 @@ uint8_t finish_climbing_flag = 0; //1 if climbing motion finish
 
 uint8_t usb_climb_state = 0;
 
-extern uint8_t buzzer_expiry_count;
 
 //Base wheel control
 Briter_Encoder_t base_encoder[2];
@@ -320,7 +319,6 @@ void Task_NormalDrive(void *param) {
 				//Notify user that he is in danger situation
 				//Function like beeping sound when cars is reversing
 				if (xTimerIsTimerActive(timer_buzzer) == pdFALSE) {
-					buzzer_expiry_count = 0;
 					xTimerStart(timer_buzzer, 1);
 				}
 			}

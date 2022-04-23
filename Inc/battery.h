@@ -36,30 +36,28 @@ typedef struct{
 	batteryBasicInfo battery_info;
 }batteryHandler;
 
-/*
- * brief Initialize battery handler struct to all zero
- * param battery_handler 	pointer to battery handler
- * param  huart				pointer to uart handler that in charge in reading the battery
+/**
+ * @brief Initialize battery handler struct to all zero
+ * @param battery_handler 	pointer to battery handler
+ * @param  huart				pointer to uart handler that in charge in reading the battery
  */
 void Battery_Init(batteryHandler* battery_handler, UART_HandleTypeDef* huart);
 
-//TODO: Need to remove use of dynamic allocation. (BAD HABIT in embedded!)
-//Can try to use circular buffer instead
-/*
- * brief De-Initialize battery handler dynamic memory to zero
- * param battery_handler 	pointer to battery handler
+/**
+ * @brief De-Initialize battery handler dynamic memory to zero
+ * @param battery_handler 	pointer to battery handler
  */
 void Battery_DeInit(batteryHandler* battery_handler);
 
-/*
- * brief Tell uart to transmit message via DMA to get the battery latest state
- * param battery_handler 	pointer to battery handler
+/**
+ * @brief Tell uart to transmit message via DMA to get the battery latest state
+ * @param battery_handler 	pointer to battery handler
  */
 void Battery_GetState(batteryHandler* battery_handler);
 
-/*
- * brief Process message that is received from the uart dma
- * param battery_handler 	pointer to battery handler
+/**
+ * @brief Process message that is received from the uart dma
+ * @param battery_handler 	pointer to battery handler
  */
 void Battery_ReadState(batteryHandler* battery_handler, uint8_t receive_buf[]);
 

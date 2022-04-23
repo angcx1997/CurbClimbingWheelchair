@@ -24,6 +24,7 @@
 #include "stm32f4xx_hal.h"
 #include <math.h>
 #include "main.h"
+#include <stdbool.h>
 
 extern UART_HandleTypeDef huart3;
 extern DMA_HandleTypeDef hdma_usart3_rx;
@@ -34,27 +35,6 @@ typedef struct{
 }Encoder_Feedback;
 
 extern Encoder_Feedback hub_encoder_feedback;
-
-enum MOTOR_ADDRESS_ENUM{
-	MOTOR_1 = 0xA1,
-	MOTOR_2 = 0xA2,
-	MOTOR_3 = 0xA3,
-	MOTOR_4 = 0xA4
-};
-
-typedef enum{
-	MOTOR_ENABLE = 0x00,
-	MOTOR_BRAKE= 0x01,
-	MOTOR_DISABLE = 0x02,
-	MOTOR_CLR_ALARM = 0x03
-}Motor_Command;
-
-typedef enum{
-	MOTOR_ENCODER_FEEDBACK = 0x80,
-	MOTOR_CONTROLLER_FEEDBACK= 0x82,
-	MOTOR_VELOCITY_CURRENT_FEEDBACK = 0x83,
-}Motor_Feedback_Command;
-
 
 /**
   * @brief Initialize motor by setting all IO pin to LOW
@@ -67,18 +47,23 @@ void HubMotor_Init();
   * @brief send speed command to Hub motor
   * Need add HAL_DMA_RECEIVE_CPT_CALLBACK to receive message
   * @param ang velocity
-  * @retval None
+  * @retval HAL_StatusTypeDef hal status
   */
 HAL_StatusTypeDef HubMotor_SendCommand(float m1_ang_speed, float m2_ang_speed);
 
-//TODO:Received message process
 /**
-  * @brief receive speed command to Hub motor
-  * Need add HAL_DMA_RECEIVE_CPT_CALLBACK to receive message
-  * @param None
-  * @retval None
+  * @brief Check receive buffer checksum
+  * @param receive_buf receive buffer from uart
+  * @retval true if receive buffer is valid
   */
-//Encoder_Feedback receiveHubMotor(uint8_t receive_buf[]);
+bool HubMotor_CalculateChecksum(uint8_t receive_buf[]);
+
+/**
+  * @brief Used to receive data from callback function
+  * @param receive_buf receive buffer from uart
+  * @retval Encoder_Feedback
+  */
+Encoder_Feedback HubMotor_ReceiveCallback(uint8_t receive_buf[]);
 
 
 
