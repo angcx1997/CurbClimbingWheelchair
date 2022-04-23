@@ -182,7 +182,6 @@ uint8_t finish_climbing_flag = 0; //1 if climbing motion finish
 
 uint8_t usb_climb_state = 0;
 
-
 //Base wheel control
 Briter_Encoder_t base_encoder[2];
 Debug_Tick_t encoder_tick_taken = { 0 };
@@ -280,7 +279,6 @@ void Task_NormalDrive(void *param) {
 	MotorStartup(&sabertooth_handler);
 	MotorStop(&sabertooth_handler);
 
-
 	while (1) {
 		if (lifting_mode == NORMAL) {
 			//When user in normal driving mode
@@ -293,29 +291,15 @@ void Task_NormalDrive(void *param) {
 			}
 
 			//Calculate wheel velocity from joystick input
-			if (joystick_ptr != NULL) {
-				DDrive_SpeedMapping(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
-				dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
-			}
-			else {
-				//if no joystick data is received, stop both left and right wheel
+			if (joystick_ptr == NULL) {
 				MotorStop(&sabertooth_handler);
 			}
 		}
-
-		else if (lifting_mode == STOP) {
-			//When front distance sensor
-			MotorStop(&sabertooth_handler);
-			xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
-		}
-
 		else if (lifting_mode == CURB_DETECTED) {
 			//When curb is detected by distance sensor,
 			//Restrict wheelchair movement to prevent user move forward
 			if (joystick_ptr != NULL) {
 				joystick_ptr->y = (joystick_ptr->y > 0) ? 0 : joystick_ptr->y;
-				DDrive_SpeedMapping(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
-				dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 				//Notify user that he is in danger situation
 				//Function like beeping sound when cars is reversing
 				if (xTimerIsTimerActive(timer_buzzer) == pdFALSE) {
@@ -323,11 +307,21 @@ void Task_NormalDrive(void *param) {
 				}
 			}
 		}
+		else if (lifting_mode == STOP) {
+			//When front distance sensor
+			MotorStop(&sabertooth_handler);
+			xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
+			continue;
+		}
 		else {
 			//If not in driving mode
 			MotorStop(&sabertooth_handler);
 			xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
+			continue;
 		}
+
+		DDrive_SpeedMapping(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
+		dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 		vTaskDelay(10);
 	}
 }

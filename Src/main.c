@@ -48,7 +48,7 @@
 #include "queue.h"
 #include "timers.h"
 #include "tfmini.h"
-
+#include "semphr.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
