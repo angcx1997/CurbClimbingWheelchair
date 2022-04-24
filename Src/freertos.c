@@ -23,6 +23,7 @@
 #include "task.h"
 #include "main.h"
 #include "queue.h"
+#include "semphr.h"
 #include "timers.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -124,6 +125,8 @@ extern TaskHandle_t task_usb;
 
 extern QueueHandle_t queue_joystick_raw;
 extern QueueHandle_t encoder;
+
+extern xSemaphoreHandle mutex_cmd_vel;
 
 extern TimerHandle_t timer_buzzer;
 
@@ -298,13 +301,17 @@ void Task_NormalDrive(void *param) {
 		else if (lifting_mode == CURB_DETECTED) {
 			//When curb is detected by distance sensor,
 			//Restrict wheelchair movement to prevent user move forward
-			if (joystick_ptr != NULL) {
-				joystick_ptr->y = (joystick_ptr->y > 0) ? 0 : joystick_ptr->y;
-				//Notify user that he is in danger situation
-				//Function like beeping sound when cars is reversing
-				if (xTimerIsTimerActive(timer_buzzer) == pdFALSE) {
-					xTimerStart(timer_buzzer, 1);
+			if (xSemaphoreTake(mutex_cmd_vel, pdMS_TO_TICKS(5)) == pdTRUE) {
+				if (joystick_ptr != NULL) {
+					joystick_ptr->y = (joystick_ptr->y > 0) ? 0 : joystick_ptr->y;
 				}
+				xSemaphoreGive(mutex_cmd_vel);
+			}
+			//Notify user that he is in danger situation
+			//Function like beeping sound when cars is reversing
+			if (xTimerIsTimerActive(timer_buzzer) == pdFALSE) {
+				xTimerStart(timer_buzzer, 1);
+
 			}
 		}
 		else if (lifting_mode == STOP) {
@@ -455,28 +462,38 @@ void Task_Joystick(void *param) {
 
 	while (1) {
 		ADC_DataRequest();
-		if (xQueueReceive(queue_joystick_raw, &(joystick_handler), 50) == pdPASS) {
-			Joystick_CalculatePos(&joystick_handler);
-		}
-		else {
-			//If no data is available, force reading to zero
-			joystick_handler.x = 0;
-			joystick_handler.y = 0;
-			//Re-initialize joystick and queue
-			ADC_Init();
-			xQueueReset(queue_joystick_raw);
-		}
+		if (xSemaphoreTake(mutex_cmd_vel, pdMS_TO_TICKS(5)) == pdTRUE) {
+			if (xQueueReceive(queue_joystick_raw, &(joystick_handler), 50) == pdPASS) {
+				Joystick_CalculatePos(&joystick_handler);
+			}
+			else {
+				//If no data is available, force reading to zero
+				joystick_handler.x = 0;
+				joystick_handler.y = 0;
+				//Re-initialize joystick and queue
+				ADC_Init();
+				xQueueReset(queue_joystick_raw);
+			}
 
 #ifdef DEBUGGING
-	x = joystick_handler.x;
-	y = joystick_handler.y;
-#endif
-		joystick_ptr = &joystick_handler;
+				x = joystick_handler.x;
+				y = joystick_handler.y;
+			#endif
+			joystick_ptr = &joystick_handler;
+			xSemaphoreGive(mutex_cmd_vel);
+		}
 
 		vTaskDelayUntil(&tick, period);
 	}
 }
 
+/**
+ * Climbing:
+ * Focus on the climbing only
+ * 1. Manual control
+ * 2. Semi-autonomous climbing control
+ * 3. (in progress)fully autonomous control
+ */
 void Task_Climbing(void *param) {
 	//Store user press button state and climb iteration
 	uint8_t button_prev_state = 0;
