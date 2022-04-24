@@ -254,8 +254,8 @@ static void writeSabertoothCommand(Sabertooth_Handler *st_handler, uint8_t comma
 	} else if (command == SABERTOOTH_GET) {
 		HAL_UART_Transmit(st_handler->huart, send_buf, SEND_BUF_SIZE_GET,1);
 		uint32_t t = HAL_GetTick();
-		while(HAL_UART_Receive_DMA(st_handler->huart, motor_receive_buf, 9) != HAL_OK
-				|| HAL_GetTick() - t > 5000);
+//		while(HAL_UART_Receive_DMA(st_handler->huart, motor_receive_buf, 9) != HAL_OK
+//				|| HAL_GetTick() - t > 5000);
 
     }
 }

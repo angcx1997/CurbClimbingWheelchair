@@ -121,7 +121,7 @@ TaskHandle_t task_usb;
 QueueHandle_t queue_joystick_raw;
 QueueHandle_t encoder;
 
-xSemaphoreHandle mutex_cmd_vel;
+xSemaphoreHandle mutex_joystick;
 
 TimerHandle_t timer_buzzer;
 
@@ -228,8 +228,8 @@ int main(void) {
 
 	/* USER CODE BEGIN RTOS_MUTEX */
 	/* add mutexes, ... */
-	mutex_cmd_vel = xSemaphoreCreateMutex();
-	configASSERT(mutex_cmd_vel != NULL);
+	mutex_joystick = xSemaphoreCreateMutex();
+	configASSERT(mutex_joystick != NULL);
 	/* USER CODE END RTOS_MUTEX */
 
 	/* USER CODE BEGIN RTOS_SEMAPHORES */

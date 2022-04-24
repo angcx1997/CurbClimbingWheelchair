@@ -4,6 +4,10 @@
  * This file is to target communicate with sabertooth through Serial Communication
  *  Created on: Dec 3, 2021
  *      Author: ray
+ * Note:
+ * - prevent using sabertooth read function, not yet complete
+ * - If wish to use, modify writeSabertoothCommand()
+ * - Also, if wish to read, use separate uart for get and set command
  */
 
 #ifndef INC_SABERTOOTH_H_

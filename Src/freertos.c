@@ -126,7 +126,7 @@ extern TaskHandle_t task_usb;
 extern QueueHandle_t queue_joystick_raw;
 extern QueueHandle_t encoder;
 
-extern xSemaphoreHandle mutex_cmd_vel;
+extern xSemaphoreHandle mutex_joystick;
 
 extern TimerHandle_t timer_buzzer;
 
@@ -269,12 +269,15 @@ void Task_NormalDrive(void *param) {
 	/*
 	 * Mainly control wheelchair base wheel, task run when normal driving
 	 */
-	//TODO: Use queue to sync joystick data between task normal drive and joystick
-	//current approach is not thread safe
-	//Use either mutex or queue
 	differentialDrive_Handler differential_drive_handler;
 	Gear_Level gear_level = GEAR1; //change the speed level if need higher speed
 	Sabertooth_Handler sabertooth_handler;
+	//declare a struct to hold linear and angular velocity
+	struct Command_Velocity{
+		float linear;
+		float angular;
+	};
+	struct Command_Velocity cmd_vel = {0,0};
 
 	//Initialize base wheel
 	DDrive_Init(&differential_drive_handler, FREQUENCY);
@@ -296,16 +299,22 @@ void Task_NormalDrive(void *param) {
 			//Calculate wheel velocity from joystick input
 			if (joystick_ptr == NULL) {
 				MotorStop(&sabertooth_handler);
+			}else{
+				cmd_vel.linear = joystick_ptr->y;
+				cmd_vel.angular = joystick_ptr->x;
 			}
 		}
 		else if (lifting_mode == CURB_DETECTED) {
-			//When curb is detected by distance sensor,
-			//Restrict wheelchair movement to prevent user move forward
-			if (xSemaphoreTake(mutex_cmd_vel, pdMS_TO_TICKS(5)) == pdTRUE) {
+			//Use mutex to safeguard joystick ptr from being modified in Task_Joystick
+			if (xSemaphoreTake(mutex_joystick, pdMS_TO_TICKS(5)) == pdTRUE) {
+				//When curb is detected by distance sensor,
+				//Restrict wheelchair movement to prevent user move forward
 				if (joystick_ptr != NULL) {
 					joystick_ptr->y = (joystick_ptr->y > 0) ? 0 : joystick_ptr->y;
+					cmd_vel.linear = joystick_ptr->y;
+					cmd_vel.angular = joystick_ptr->x;
 				}
-				xSemaphoreGive(mutex_cmd_vel);
+				xSemaphoreGive(mutex_joystick);
 			}
 			//Notify user that he is in danger situation
 			//Function like beeping sound when cars is reversing
@@ -327,7 +336,8 @@ void Task_NormalDrive(void *param) {
 			continue;
 		}
 
-		DDrive_SpeedMapping(&differential_drive_handler, joystick_ptr->x, joystick_ptr->y, gear_level);
+		DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
+		//TODO: Add PID controller here
 		dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 		vTaskDelay(10);
 	}
@@ -462,7 +472,8 @@ void Task_Joystick(void *param) {
 
 	while (1) {
 		ADC_DataRequest();
-		if (xSemaphoreTake(mutex_cmd_vel, pdMS_TO_TICKS(5)) == pdTRUE) {
+		//Use mutex to safeguard joystick data being accessed by task_normal_drive
+		if (xSemaphoreTake(mutex_joystick, pdMS_TO_TICKS(5)) == pdTRUE) {
 			if (xQueueReceive(queue_joystick_raw, &(joystick_handler), 50) == pdPASS) {
 				Joystick_CalculatePos(&joystick_handler);
 			}
@@ -480,7 +491,7 @@ void Task_Joystick(void *param) {
 				y = joystick_handler.y;
 			#endif
 			joystick_ptr = &joystick_handler;
-			xSemaphoreGive(mutex_cmd_vel);
+			xSemaphoreGive(mutex_joystick);
 		}
 
 		vTaskDelayUntil(&tick, period);

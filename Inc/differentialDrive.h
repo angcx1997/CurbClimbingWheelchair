@@ -51,11 +51,6 @@ typedef struct{
 typedef struct{
 	float m_leftMotor;	/*!< Motor (left)  mixed output (-1..+1) >*/
 	float m_rightMotor;	/*!< Motor (right) mixed output (-1..+1) >*/
-	int m_fPivYLimit;	/*!<The threshold at which the pivot action starts
-                		This threshold is measured in units on the Y-axis
-                		away from the X-axis (Y=0). A greater value will assign
-                		more of the joystick's range to pivot actions.
-                		Allowable range: (0..+COMPUTERANGE)>*/
 	motorState left_motor_state;	/*!< Motor (left) state >*/
 	motorState right_motor_state;	/*!< Motor (right) state >*/
 	uint32_t frequency; 			/*!< To smoothen output >*/
