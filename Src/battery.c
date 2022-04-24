@@ -55,10 +55,10 @@ void Battery_Init(batteryHandler* battery_handler, UART_HandleTypeDef* huart){
 void Battery_DeInit(batteryHandler* battery_handler){
 	free(battery_handler->huart);
 	free(battery_handler->battery_info.NTC_content);
-
 }
 
-void Battery_GetState(batteryHandler* battery_handler){
+HAL_StatusTypeDef Battery_GetState(batteryHandler* battery_handler){
+	HAL_StatusTypeDef status;
 	uint8_t send_buf[7] = {0};
 	send_buf[0] = SOI;
 	send_buf[1] = BATTERY_READ;
@@ -68,7 +68,15 @@ void Battery_GetState(batteryHandler* battery_handler){
 	send_buf[4] = (checksum >> 8) & 0xFF;
 	send_buf[5] = checksum & 0xFF;
 	send_buf[6] = EOI;
-	HAL_UART_Transmit_DMA(battery_handler->huart, send_buf, sizeof(send_buf));
+	status = HAL_UART_Transmit(battery_handler->huart, send_buf, sizeof(send_buf), 5);
+	if (status != HAL_OK)
+		return status;
+	uint8_t receive_buf[40];
+	uint16_t rx_length;
+	status = HAL_UARTEx_ReceiveToIdle(battery_handler->huart, receive_buf, sizeof(receive_buf), &rx_length, 10);
+	if (status != HAL_OK)
+		return status;
+	Battery_ReadState(battery_handler, receive_buf);
 }
 
 void Battery_ReadState(batteryHandler* battery_handler, uint8_t receive_buf[]){

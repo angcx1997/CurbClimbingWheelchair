@@ -50,10 +50,11 @@ void Battery_Init(batteryHandler* battery_handler, UART_HandleTypeDef* huart);
 void Battery_DeInit(batteryHandler* battery_handler);
 
 /**
- * @brief Tell uart to transmit message via DMA to get the battery latest state
- * @param battery_handler 	pointer to battery handler
+ * @brief Tell uart to transmit and receive message  to get the battery latest state
+ * @param battery_handler pointer to battery handler
+ * @retval HAL_Status
  */
-void Battery_GetState(batteryHandler* battery_handler);
+HAL_StatusTypeDef Battery_GetState(batteryHandler* battery_handler);
 
 /**
  * @brief Process message that is received from the uart dma

@@ -118,6 +118,7 @@ void Task_Sensor(void *param);
 void Task_Joystick(void *param);
 void Task_Climbing(void *param);
 void Task_USB(void *param);
+void Task_Battery(void* param);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

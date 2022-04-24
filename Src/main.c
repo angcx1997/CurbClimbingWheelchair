@@ -117,6 +117,7 @@ TaskHandle_t task_navigation_sensor;
 TaskHandle_t task_joystick;
 TaskHandle_t task_climbing;
 TaskHandle_t task_usb;
+TaskHandle_t task_battery;
 
 QueueHandle_t queue_joystick_raw;
 QueueHandle_t encoder;
@@ -271,7 +272,8 @@ int main(void) {
 	configASSERT(status == pdPASS);
 	status = xTaskCreate(Task_USB, "USB Task", 250, NULL, 2, &task_usb);
 	configASSERT(status == pdPASS);
-
+	status = xTaskCreate(Task_Battery, "Battery Task", 250, NULL, 2, &task_battery);
+	configASSERT(status == pdPASS);
 	/* USER CODE END RTOS_THREADS */
 
 	/* USER CODE BEGIN RTOS_EVENTS */

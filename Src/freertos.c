@@ -38,6 +38,7 @@
 #include "mpu6050.h"
 #include "bd25l.h"
 #include "X2_6010S.h"
+#include "battery.h"
 //#include "wheelchair.h"
 #include "PID.h"
 #include "Sabertooth.h"
@@ -767,6 +768,23 @@ void Task_USB(void *param) {
 	usbBuffer[0] = 0;
 #endif
 		vTaskDelay(1000);
+	}
+}
+
+void Task_Battery(void* param){
+	batteryHandler battery;
+	Battery_Init(&battery, &huart1);
+	uint8_t error_count = 0;
+
+	while(1)
+	{
+		if (Battery_GetState(&battery) != HAL_OK){
+			error_count++;
+		}
+//		if (error_count > 50)
+		vTaskDelay(pdMS_TO_TICKS(1000));
+//		vTaskDelay(pdMS_TO_TICKS(60000));
+
 	}
 }
 
