@@ -417,7 +417,8 @@ void Task_Sensor(void *param) {
     TickType_t end_t;
     while (1) {
 	//******************************************************************************
-	/*Climbing Sensor Data Acquisition*/
+	/*Climbing Sensor Data Acquisition and Processing*/
+	/*Data Acquisition*/
 	//Read encoder data
 	ENCODER_Get_Angle(&encoderBack);
 	ENCODER_Get_Angle(&encoderFront);
@@ -428,6 +429,7 @@ void Task_Sensor(void *param) {
 	Button_FilteredInput(&backLS1, 5);
 	Button_FilteredInput(&backLS2, 5);
 
+	/*Data Processing*/
 	//TODO: What if leg is suspended on the air, touchdown will turn back to 0 and cause the leg to continue landing
 	//If both front LS is touched, store in touchdown (use to tell front leg are both in contact with ground)
 	if (rearLS1.state == 1 || rearLS2.state == 1)
@@ -450,6 +452,7 @@ void Task_Sensor(void *param) {
 
 	//******************************************************************************
 	/*Navigation sensor data acquisition*/
+	/*Data Acquisition*/
 	if (base_encoder_tx_flag % 2 == 0) {
 	    BRITER_RS485_GetValue_DMA_TX(&base_encoder[0]);
 	    base_encoder_tx_flag ++;
@@ -459,6 +462,11 @@ void Task_Sensor(void *param) {
 	    base_encoder_tx_flag --;
 	}
 	BRITER_RS485_GetValue_DMA_RX(base_encoder);
+
+	/*Data Processing*/
+
+
+
 	/*Error Handling*/
 	//If encoder is faulty, no data reception, suspend all task
 	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 500 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 500) {

@@ -398,7 +398,6 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 		encoderBack.signed_encoder_pos = encoderBack.encoder_pos - 4096 * BACK_GEAR_RATIO;
 
 	    last_can_rx_t[BACK_INDEX] = xTaskGetTickCountFromISR();
-
 	}
 	//Right encoder callback
 	if (incoming[1] == ENC_ADDR_RIGHT) {

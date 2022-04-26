@@ -51,7 +51,7 @@
 /** Briter RS485 handler*/
 typedef struct {
 	uint8_t addr; /*!< Address of Briter encoder*/
-	uint32_t encoder_value; /*!< Store reading returned from encoder*/
+	volatile uint32_t encoder_value; /*!< Store reading returned from encoder*/
 	UART_HandleTypeDef *huart; /*!< Store peripheral handler to transmit/receive data*/
 } Briter_Encoder_t;
 
@@ -72,6 +72,9 @@ typedef struct {
 #define BRITER_RS485_SET_MUL_5_ADDR			0x0F	/*!< Set current turn value to 5 turns*/
 /**@}*/
 
+/**
+ * Briter RS485 Error Code
+ */
 #define BRITER_RS485_ERROR					0xFFFFFFFF		/*!< Briter RS485 Error Message*/
 
 //Used as receive buffer
