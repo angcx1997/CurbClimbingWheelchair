@@ -42,6 +42,7 @@
 #include "joystick.h"
 #include "differentialDrive.h"
 #include "DifferentialDrivetoSabertooth.h"
+#include "briter_encoder_rs485.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -92,7 +93,10 @@ TIM_HandleTypeDef htim8;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart3;
+UART_HandleTypeDef huart4;
 UART_HandleTypeDef huart6;
+DMA_HandleTypeDef hdma_uart4_rx;
+DMA_HandleTypeDef hdma_uart4_tx;
 DMA_HandleTypeDef hdma_usart1_rx;
 DMA_HandleTypeDef hdma_usart1_tx;
 DMA_HandleTypeDef hdma_usart3_rx;
@@ -103,7 +107,7 @@ DMA_HandleTypeDef hdma_usart6_tx;
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
-		.name = "defaultTask", .stack_size = 128 * 4, .priority = (osPriority_t) osPriorityNormal,
+	.name = "defaultTask", .stack_size = 128 * 4, .priority = (osPriority_t) osPriorityNormal,
 };
 /* USER CODE BEGIN PV */
 
@@ -150,9 +154,12 @@ uint8_t motor_receive_buf[9];
 uint8_t receive_buf[15];
 Encoder_Feedback hub_encoder_feedback;
 
-TickType_t last_can_rx_t[2] = {
-		0
-}; //To keep track of CAN bus reception
+//Base encoder UART Tx/Rx with DMA
+Briter_Encoder_t base_encoder[2];
+
+//To keep track of CAN bus reception
+TickType_t last_can_rx_t[2];
+TickType_t last_rs485_enc_t[2];
 TickType_t last_hub_rx_t = 0; //Keep track of HUB reception activity
 TickType_t last_tf_mini_t = 0;
 
@@ -185,112 +192,112 @@ extern Operation_Mode lifting_mode;
  * @retval int
  */
 int main(void) {
-	/* USER CODE BEGIN 1 */
-	BaseType_t status;
-	/* USER CODE END 1 */
+    /* USER CODE BEGIN 1 */
+    BaseType_t status;
+    /* USER CODE END 1 */
 
-	/* MCU Configuration--------------------------------------------------------*/
+    /* MCU Configuration--------------------------------------------------------*/
 
-	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-	HAL_Init();
+    /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+    HAL_Init();
 
-	/* USER CODE BEGIN Init */
+    /* USER CODE BEGIN Init */
 
-	/* USER CODE END Init */
+    /* USER CODE END Init */
 
-	/* Configure the system clock */
-	SystemClock_Config();
+    /* Configure the system clock */
+    SystemClock_Config();
 
-	/* USER CODE BEGIN SysInit */
-	/* USER CODE END SysInit */
+    /* USER CODE BEGIN SysInit */
+    /* USER CODE END SysInit */
 
-	/* Initialize all configured peripherals */
-	/* USER CODE BEGIN 2 */
-	Peripheral_Init();
+    /* Initialize all configured peripherals */
+    /* USER CODE BEGIN 2 */
+    Peripheral_Init();
 
-	//Initialize front and back climbing position controller
-	frontClimb_pid = pid_create(&frontClimb_ctrl, &frontClimb_input, &frontClimb_output, &frontClimb_setpoint,
-			frontClimb_kp, frontClimb_ki, frontClimb_kd);
-	pid_limits(frontClimb_pid, -80, 80);
-	pid_sample(frontClimb_pid, 1);
-	pid_auto(frontClimb_pid);
+    //Initialize front and back climbing position controller
+    frontClimb_pid = pid_create(&frontClimb_ctrl, &frontClimb_input, &frontClimb_output, &frontClimb_setpoint,
+	    frontClimb_kp, frontClimb_ki, frontClimb_kd);
+    pid_limits(frontClimb_pid, -80, 80);
+    pid_sample(frontClimb_pid, 1);
+    pid_auto(frontClimb_pid);
 
-	backClimb_pid = pid_create(&backClimb_ctrl, &backClimb_input, &backClimb_output, &backClimb_setpoint, backClimb_kp,
-			backClimb_ki, backClimb_kd);
-	pid_limits(backClimb_pid, -80, 80);
-	pid_sample(backClimb_pid, 1);
-	pid_auto(backClimb_pid);
+    backClimb_pid = pid_create(&backClimb_ctrl, &backClimb_input, &backClimb_output, &backClimb_setpoint, backClimb_kp,
+	    backClimb_ki, backClimb_kd);
+    pid_limits(backClimb_pid, -80, 80);
+    pid_sample(backClimb_pid, 1);
+    pid_auto(backClimb_pid);
 
 //    HAL_UART_Receive_DMA(&huart3, receive_buf, 15);
-	/* USER CODE END 2 */
+    /* USER CODE END 2 */
 
-	/* Init scheduler */
-	osKernelInitialize();
+    /* Init scheduler */
+    osKernelInitialize();
 
-	/* USER CODE BEGIN RTOS_MUTEX */
-	/* add mutexes, ... */
-	mutex_joystick = xSemaphoreCreateMutex();
-	configASSERT(mutex_joystick != NULL);
-	/* USER CODE END RTOS_MUTEX */
+    /* USER CODE BEGIN RTOS_MUTEX */
+    /* add mutexes, ... */
+    mutex_joystick = xSemaphoreCreateMutex();
+    configASSERT(mutex_joystick != NULL);
+    /* USER CODE END RTOS_MUTEX */
 
-	/* USER CODE BEGIN RTOS_SEMAPHORES */
-	/* add semaphores, ... */
-	/* USER CODE END RTOS_SEMAPHORES */
+    /* USER CODE BEGIN RTOS_SEMAPHORES */
+    /* add semaphores, ... */
+    /* USER CODE END RTOS_SEMAPHORES */
 
-	/* USER CODE BEGIN RTOS_TIMERS */
-	/* start timers, add new ones, ... */
-	timer_buzzer = xTimerCreate("Buzzer Timer", pdMS_TO_TICKS(500), pdTRUE, NULL, Buzzer_Timer_Callback);
-	/* USER CODE END RTOS_TIMERS */
+    /* USER CODE BEGIN RTOS_TIMERS */
+    /* start timers, add new ones, ... */
+    timer_buzzer = xTimerCreate("Buzzer Timer", pdMS_TO_TICKS(500), pdTRUE, NULL, Buzzer_Timer_Callback);
+    /* USER CODE END RTOS_TIMERS */
 
-	/* USER CODE BEGIN RTOS_QUEUES */
-	/* add queues, ... */
-	queue_joystick_raw = xQueueCreate(5, sizeof(JoystickHandle)); //store joystick handler
-	configASSERT(queue_joystick_raw != NULL);
-	/* USER CODE END RTOS_QUEUES */
+    /* USER CODE BEGIN RTOS_QUEUES */
+    /* add queues, ... */
+    queue_joystick_raw = xQueueCreate(5, sizeof(JoystickHandle)); //store joystick handler
+    configASSERT(queue_joystick_raw != NULL);
+    /* USER CODE END RTOS_QUEUES */
 
-	/* Create the thread(s) */
-	/* creation of defaultTask */
-	defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+    /* Create the thread(s) */
+    /* creation of defaultTask */
+    defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
-	/* USER CODE BEGIN RTOS_THREADS */
-	/* add threads, ... */
-	status = xTaskCreate(Task_Control, "Control Task", 250, NULL, 2, &task_control);
-	configASSERT(status == pdPASS);
-	status = xTaskCreate(Task_Keyboard, "Keyboard Task", 250, NULL, 2, &task_keyboard);
-	configASSERT(status == pdPASS);
-	status = xTaskCreate(Task_Climbing, "Climbing Task", 250, NULL, 2, &task_climbing);
-	configASSERT(status == pdPASS);
-	status = xTaskCreate(Task_Joystick, "Joystick Task", 250, NULL, 2, &task_joystick);
-	configASSERT(status == pdPASS);
+    /* USER CODE BEGIN RTOS_THREADS */
+    /* add threads, ... */
+    status = xTaskCreate(Task_Control, "Control Task", 250, NULL, 2, &task_control);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Keyboard, "Keyboard Task", 250, NULL, 2, &task_keyboard);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Climbing, "Climbing Task", 250, NULL, 2, &task_climbing);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Joystick, "Joystick Task", 250, NULL, 2, &task_joystick);
+    configASSERT(status == pdPASS);
 //    status = xTaskCreate(Task_Climb_Sensor, "Climb Sensor Task", 300, NULL, 2, &task_climb_sensor);
 //    configASSERT(status == pdPASS);
 //    status = xTaskCreate(Task_Navigation_Sensor, "Navigation Sensor Task", 300, NULL, 2, &task_navigation_sensor);
 //	configASSERT(status == pdPASS);
-	status = xTaskCreate(Task_Sensor, "Sensor Task", 400, NULL, 2, &task_sensor);
-	configASSERT(status == pdPASS);
-	status = xTaskCreate(Task_NormalDrive, "Normal Drive Task", 250, NULL, 2, &task_normalDrive);
-	configASSERT(status == pdPASS);
-	status = xTaskCreate(Task_USB, "USB Task", 250, NULL, 2, &task_usb);
-	configASSERT(status == pdPASS);
-	status = xTaskCreate(Task_Battery, "Battery Task", 250, NULL, 2, &task_battery);
-	configASSERT(status == pdPASS);
-	/* USER CODE END RTOS_THREADS */
+    status = xTaskCreate(Task_Sensor, "Sensor Task", 400, NULL, 2, &task_sensor);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_NormalDrive, "Normal Drive Task", 250, NULL, 2, &task_normalDrive);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_USB, "USB Task", 250, NULL, 2, &task_usb);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Battery, "Battery Task", 250, NULL, 2, &task_battery);
+    configASSERT(status == pdPASS);
+    /* USER CODE END RTOS_THREADS */
 
-	/* USER CODE BEGIN RTOS_EVENTS */
-	/* add events, ... */
-	/* USER CODE END RTOS_EVENTS */
-	/* Start scheduler */
-	osKernelStart();
+    /* USER CODE BEGIN RTOS_EVENTS */
+    /* add events, ... */
+    /* USER CODE END RTOS_EVENTS */
+    /* Start scheduler */
+    osKernelStart();
 
-	/* We should never get here as control is now taken by the scheduler */
-	/* Infinite loop */
-	/* USER CODE BEGIN WHILE */
-	while (1) {
-		/* USER CODE END WHILE */
+    /* We should never get here as control is now taken by the scheduler */
+    /* Infinite loop */
+    /* USER CODE BEGIN WHILE */
+    while (1) {
+	/* USER CODE END WHILE */
 
-		/* USER CODE BEGIN 3 */
-	}
-	/* USER CODE END 3 */
+	/* USER CODE BEGIN 3 */
+    }
+    /* USER CODE END 3 */
 }
 
 /**
@@ -298,42 +305,42 @@ int main(void) {
  * @retval None
  */
 void SystemClock_Config(void) {
-	RCC_OscInitTypeDef RCC_OscInitStruct = {
-			0
-	};
-	RCC_ClkInitTypeDef RCC_ClkInitStruct = {
-			0
-	};
+    RCC_OscInitTypeDef RCC_OscInitStruct = {
+	    0
+    };
+    RCC_ClkInitTypeDef RCC_ClkInitStruct = {
+	    0
+    };
 
-	/** Configure the main internal regulator output voltage
-	 */
-	__HAL_RCC_PWR_CLK_ENABLE();
-	__HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
-	/** Initializes the RCC Oscillators according to the specified parameters
-	 * in the RCC_OscInitTypeDef structure.
-	 */
-	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-	RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-	RCC_OscInitStruct.PLL.PLLM = 8;
-	RCC_OscInitStruct.PLL.PLLN = 72;
-	RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-	RCC_OscInitStruct.PLL.PLLQ = 3;
-	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
-		Error_Handler();
-	}
-	/** Initializes the CPU, AHB and APB buses clocks
-	 */
-	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
-	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+    /** Configure the main internal regulator output voltage
+     */
+    __HAL_RCC_PWR_CLK_ENABLE();
+    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
+    /** Initializes the RCC Oscillators according to the specified parameters
+     * in the RCC_OscInitTypeDef structure.
+     */
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+    RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+    RCC_OscInitStruct.PLL.PLLM = 8;
+    RCC_OscInitStruct.PLL.PLLN = 72;
+    RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+    RCC_OscInitStruct.PLL.PLLQ = 3;
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+	Error_Handler();
+    }
+    /** Initializes the CPU, AHB and APB buses clocks
+     */
+    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+    RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK) {
-		Error_Handler();
-	}
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK) {
+	Error_Handler();
+    }
 }
 
 /* USER CODE BEGIN 4 */
@@ -343,23 +350,23 @@ void SystemClock_Config(void) {
  * @retval None
  */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-	switch (GPIO_Pin) {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    switch (GPIO_Pin) {
 	/* Callback from joystick reading*/
 	case AD_BUSY_Pin: {
-		int16_t adc_rawData[8];
-		JoystickHandle joystick_handler_irq;
-		ADC_Read(adc_rawData);
-		joystick_handler_irq.x = adc_rawData[2];
-		joystick_handler_irq.y = adc_rawData[1];
-		xQueueSendFromISR(queue_joystick_raw, (void* )&joystick_handler_irq, &xHigherPriorityTaskWoken);
-		break;
+	    int16_t adc_rawData[8];
+	    JoystickHandle joystick_handler_irq;
+	    ADC_Read(adc_rawData);
+	    joystick_handler_irq.x = adc_rawData[2];
+	    joystick_handler_irq.y = adc_rawData[1];
+	    xQueueSendFromISR(queue_joystick_raw, (void* )&joystick_handler_irq, &xHigherPriorityTaskWoken);
+	    break;
 	}
 	default:
-		break;
-	}
-	/* Now the buffer is empty we can switch context if necessary. */
-	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+	    break;
+    }
+    /* Now the buffer is empty we can switch context if necessary. */
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
 /**
@@ -369,51 +376,70 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
  * @retval None
  */
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
-	static CAN_RxHeaderTypeDef canRxHeader;
-	uint8_t incoming[8];
-	if (hcan == &hcan1) {
-		HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &canRxHeader, incoming);
-		/**Process the angle with gear ratio
-		 * 4096 is encoder single turn value
-		 * 24 is the encoder maximum multi-turn value
-		 * Need to make sure and check the encoder value in the correct direction
-		 */
-		//Left encoder callback
-		if (incoming[1] == ENC_ADDR_LEFT) {
-			ENCODER_Sort_Incoming(incoming, &encoderBack);
+    static CAN_RxHeaderTypeDef canRxHeader;
+    uint8_t incoming[8];
+    if (hcan == &hcan1) {
+	HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &canRxHeader, incoming);
+	/**Process the angle with gear ratio
+	 * 4096 is encoder single turn value
+	 * 24 is the encoder maximum multi-turn value
+	 * Need to make sure and check the encoder value in the correct direction
+	 */
+	//Left encoder callback
+	if (incoming[1] == ENC_ADDR_LEFT) {
+	    ENCODER_Sort_Incoming(incoming, &encoderBack);
 
-			encoderBack.encoder_pos = (uint32_t) ((4096 * BACK_GEAR_RATIO) - encoderBack.encoder_pos)
-					% (4096 * BACK_GEAR_RATIO);
-			encoderBack.angleDeg = (float) encoderBack.encoder_pos / (4096 * BACK_GEAR_RATIO) * 360 + 36.587;
-			if (encoderBack.angleDeg > 360)
-				encoderBack.angleDeg -= 360;
-			if (encoderBack.encoder_pos >= MAX_BACK_ALLOWABLE_ENC)
-				encoderBack.signed_encoder_pos = encoderBack.encoder_pos - 4096 * BACK_GEAR_RATIO;
+	    encoderBack.encoder_pos = (uint32_t) ((4096 * BACK_GEAR_RATIO) - encoderBack.encoder_pos)
+		    % (4096 * BACK_GEAR_RATIO);
+	    encoderBack.angleDeg = (float) encoderBack.encoder_pos / (4096 * BACK_GEAR_RATIO) * 360 + 36.587;
+	    if (encoderBack.angleDeg > 360)
+		encoderBack.angleDeg -= 360;
+	    if (encoderBack.encoder_pos >= MAX_BACK_ALLOWABLE_ENC)
+		encoderBack.signed_encoder_pos = encoderBack.encoder_pos - 4096 * BACK_GEAR_RATIO;
 
-			last_can_rx_t[BACK_INDEX] = xTaskGetTickCountFromISR();
+	    last_can_rx_t[BACK_INDEX] = xTaskGetTickCountFromISR();
 
-		}
-		//Right encoder callback
-		if (incoming[1] == ENC_ADDR_RIGHT) {
-			ENCODER_Sort_Incoming(incoming, &encoderFront);
-			if (4096 * 24 - encoderFront.encoder_pos < 30000) {
-				encoderFront.encoder_pos = (4096 * 24 - encoderFront.encoder_pos)
-						% (uint32_t) (4096 * FRONT_GEAR_RATIO);
-				encoderFront.angleDeg = (float) encoderFront.encoder_pos / (4096 * FRONT_GEAR_RATIO) * 360 + 36.587;
-			}
-			else {
-				encoderFront.encoder_pos = (4096 * FRONT_GEAR_RATIO) - encoderFront.encoder_pos;
-				encoderFront.angleDeg = (float) encoderFront.encoder_pos / (4096 * FRONT_GEAR_RATIO) * 360 + 36.587
-						- 360;
-			}
-			if (encoderFront.encoder_pos >= MAX_FRONT_ALLOWABLE_ENC)
-				encoderFront.signed_encoder_pos = encoderFront.encoder_pos - 4096 * FRONT_GEAR_RATIO;
-
-			last_can_rx_t[FRONT_INDEX] = xTaskGetTickCountFromISR();
-		}
 	}
+	//Right encoder callback
+	if (incoming[1] == ENC_ADDR_RIGHT) {
+	    ENCODER_Sort_Incoming(incoming, &encoderFront);
+	    if (4096 * 24 - encoderFront.encoder_pos < 30000) {
+		encoderFront.encoder_pos = (4096 * 24 - encoderFront.encoder_pos)
+			% (uint32_t) (4096 * FRONT_GEAR_RATIO);
+		encoderFront.angleDeg = (float) encoderFront.encoder_pos / (4096 * FRONT_GEAR_RATIO) * 360 + 36.587;
+	    }
+	    else {
+		encoderFront.encoder_pos = (4096 * FRONT_GEAR_RATIO) - encoderFront.encoder_pos;
+		encoderFront.angleDeg = (float) encoderFront.encoder_pos / (4096 * FRONT_GEAR_RATIO) * 360 + 36.587
+			- 360;
+	    }
+	    if (encoderFront.encoder_pos >= MAX_FRONT_ALLOWABLE_ENC)
+		encoderFront.signed_encoder_pos = encoderFront.encoder_pos - 4096 * FRONT_GEAR_RATIO;
+
+	    last_can_rx_t[FRONT_INDEX] = xTaskGetTickCountFromISR();
+	}
+    }
 }
 
+/**
+ * @brief  Tx Transfer completed callbacks.
+ * @param  huart  Pointer to a UART_HandleTypeDef structure that contains
+ *                the configuration information for the specified UART module.
+ * @retval None
+ */
+//void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
+//    //RS485 Briter encoder callback
+//    if (huart->Instance == UART4) {
+//	if (base_encoder_tx_flag % 2 == 0) {
+//	    BRITER_RS485_GetValue_DMA_TX(&base_encoder[0]);
+//	    base_encoder_tx_flag ++;
+//	}else
+//	{
+//	    BRITER_RS485_GetValue_DMA_TX(&base_encoder[1]);
+//	    base_encoder_tx_flag --;
+//	}
+//    }
+//}
 /**
  * @brief  Rx Transfer completed callbacks.
  * @param  huart  Pointer to a UART_HandleTypeDef structure that contains
@@ -421,78 +447,128 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
  * @retval None
  */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-	//Hub Encoder callback
-	if (huart->Instance == USART3) {
-		//Hub Encoder Feedback
-		if (HubMotor_CalculateChecksum(receive_buf)) {
-			//Encoder Feedback
-			if (receive_buf[0] == 0xAA && receive_buf[1] == 0xA4 && receive_buf[3] == 0x00 && receive_buf[4] == 0x00) {
-				hub_encoder_feedback = HubMotor_ReceiveCallback(receive_buf);
-				last_hub_rx_t = xTaskGetTickCountFromISR();
-			}
-		}
+//RS485 Briter encoder callback
+    if (huart->Instance == UART4) {
+	uint8_t address = BRITER_RS485_GetAddress_DMA_Callback(RS485_Enc_RX_buf);
+	if (address == base_encoder[0].addr) {
+	    uint32_t retval = BRITER_RS485_GetValue_DMA_Callback(&base_encoder[0], RS485_Enc_RX_buf);
+	    if (retval != BRITER_RS485_ERROR) {
+		base_encoder[0].encoder_value = retval;
+		last_rs485_enc_t[0] = xTaskGetTickCount();
+	    }
 	}
+	else if (address == base_encoder[1].addr) {
+	    uint32_t retval = BRITER_RS485_GetValue_DMA_Callback(&base_encoder[1], RS485_Enc_RX_buf);
+	    if (retval != BRITER_RS485_ERROR) {
+		base_encoder[1].encoder_value = retval;
+		last_rs485_enc_t[1] = xTaskGetTickCount();
+	    }
+	}
+//	    __HAL_UART_CLEAR_OREFLAG(&huart4);
+//	    __HAL_UART_CLEAR_NEFLAG(&huart4);
+//	    __HAL_UART_CLEAR_FEFLAG(&huart4);
+//	HAL_UART_AbortReceive(&huart4);
+//	BRITER_RS485_GetValue_DMA_RX(base_encoder);
+	return;
+    }
 
-	//curb change detection callback
-	if (huart->Instance == USART1) {
-		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-		//Number of bytes received
-		uint8_t len = TFMINI_RX_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
-		distance = TFMINI_Plus_RcvData(tf_rx_buf, len);
-		//send the received data;
-		if (distance != 0) {
-			distanceNoNoise = Noise_loop(distance);
-			// diff = detectCurb_down(distanceNoNoise);
-			if (prev_dist == 0)
-				prev_dist = distanceNoNoise;
+//Hub Encoder callback
+    if (huart->Instance == USART3) {
+	//Hub Encoder Feedback
+	if (HubMotor_CalculateChecksum(receive_buf)) {
+	    //Encoder Feedback
+	    if (receive_buf[0] == 0xAA && receive_buf[1] == 0xA4 && receive_buf[3] == 0x00 && receive_buf[4] == 0x00) {
+		hub_encoder_feedback = HubMotor_ReceiveCallback(receive_buf);
+		last_hub_rx_t = xTaskGetTickCountFromISR();
+	    }
+	}
+	return;
+    }
 
-			/*
-			 diff = distanceNoNoise - prev_dist;
-			 if(diff >= 15 && lifting_mode == NORMAL){
-			 //STOP the base wheel
-			 lifting_mode = STOP;
-			 xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
-			 USB_TransmitData(CURB_CHANGE);
-			 }
-			 else if (diff >= 15 && lifting_mode == CURB_DETECTED){
-			 //stop the base wheel
-			 lifting_mode = NORMAL;
-			 xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
-			 USB_TransmitData(USB_MOVE);
-			 }
-			 else if(lifting_mode == NORMAL){
-			 USB_TransmitData(USB_MOVE);
-			 }
-			 */
+//curb change detection callback
+    if (huart->Instance == USART1){
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	//Number of bytes received
+	uint8_t len = TFMINI_RX_SIZE - __HAL_DMA_GET_COUNTER(huart1.hdmarx);
+	distance = TFMINI_Plus_RcvData(tf_rx_buf, len);
+	//send the received data;
+	if (distance != 0) {
+	    distanceNoNoise = Noise_loop(distance);
+	    // diff = detectCurb_down(distanceNoNoise);
+	    if (prev_dist == 0)
+		prev_dist = distanceNoNoise;
 
-			if (distanceNoNoise >= 20 && lifting_mode == NORMAL) {
-				//stop the base wheel completely
-				lifting_mode = STOP;
-				xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
-				//send the message to usb port
-				USB_TransmitData(CURB_CHANGE);
-			}
-			else if (distanceNoNoise < 20 && lifting_mode == CURB_DETECTED) {
-				//start the base wheel
-				lifting_mode = NORMAL;
-				xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
-				USB_TransmitData(USB_MOVE);
-			}
-			else if (lifting_mode == NORMAL) {
-				USB_TransmitData(USB_MOVE);
-			}
+	    /*
+	     diff = distanceNoNoise - prev_dist;
+	     if(diff >= 15 && lifting_mode == NORMAL){
+	     //STOP the base wheel
+	     lifting_mode = STOP;
+	     xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
+	     USB_TransmitData(CURB_CHANGE);
+	     }
+	     else if (diff >= 15 && lifting_mode == CURB_DETECTED){
+	     //stop the base wheel
+	     lifting_mode = NORMAL;
+	     xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
+	     USB_TransmitData(USB_MOVE);
+	     }
+	     else if(lifting_mode == NORMAL){
+	     USB_TransmitData(USB_MOVE);
+	     }
+	     */
 
-			prev_dist = distanceNoNoise;
+	    if (distanceNoNoise >= 20 && lifting_mode == NORMAL) {
+		//stop the base wheel completely
+		lifting_mode = STOP;
+		xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
+		//send the message to usb port
+		USB_TransmitData(CURB_CHANGE);
+	    }
+	    else if (distanceNoNoise < 20 && lifting_mode == CURB_DETECTED) {
+		//start the base wheel
+		lifting_mode = NORMAL;
+		xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
+		USB_TransmitData(USB_MOVE);
+	    }
+	    else if (lifting_mode == NORMAL) {
+		USB_TransmitData(USB_MOVE);
+	    }
+
+	    prev_dist = distanceNoNoise;
 //	    prev_dist = MAX(prev_dist, distanceNoNoise);
 //	    if (lifting_mode == STOP)
 //		prev_dist = 0;
-		}
-
-		last_tf_mini_t = xTaskGetTickCountFromISR();
-		HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
-		/* Now the buffer is empty we can switch context if necessary. */
-		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 	}
+
+	last_tf_mini_t = xTaskGetTickCountFromISR();
+
+	HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
+	/* Now the buffer is empty we can switch context if necessary. */
+	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+	return;
+    }
+
+}
+
+/**
+ * @brief  UART error callbacks.
+ * @param  huart  Pointer to a UART_HandleTypeDef structure that contains
+ *                the configuration information for the specified UART module.
+ * @retval None
+ */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART1) {
+	//This interrupt occur when multibuffer DMA
+	if (__HAL_UART_GET_FLAG(huart, UART_FLAG_ORE) ||
+	    __HAL_UART_GET_FLAG(huart, UART_FLAG_FE) ||
+	    __HAL_UART_GET_FLAG(huart, UART_FLAG_NE)){
+	    __HAL_UART_CLEAR_OREFLAG(huart);
+	    __HAL_UART_CLEAR_FEFLAG(huart);
+	    __HAL_UART_CLEAR_NEFLAG(huart);
+	    HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
+	}
+	return;
+    }
 
 }
 
@@ -502,11 +578,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
  * @retval None
  */
 void Buzzer_Timer_Callback(TimerHandle_t xTimer) {
-	/* Do not use a block time if calling a timer API function
-	 from a timer callback function, as doing so could cause a
-	 deadlock!
-	 */
-	HAL_GPIO_TogglePin(Buzzer_GPIO_Port, Buzzer_Pin);
+    /* Do not use a block time if calling a timer API function
+     from a timer callback function, as doing so could cause a
+     deadlock!
+     */
+    HAL_GPIO_TogglePin(Buzzer_GPIO_Port, Buzzer_Pin);
 }
 /* USER CODE END 4 */
 
@@ -518,15 +594,15 @@ void Buzzer_Timer_Callback(TimerHandle_t xTimer) {
  */
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument) {
-	/* init code for USB_DEVICE */
-	MX_USB_DEVICE_Init();
+    /* init code for USB_DEVICE */
+    MX_USB_DEVICE_Init();
 
-	/* USER CODE BEGIN 5 */
-	/* Infinite loop */
-	for (;;) {
-		osDelay(1);
-	}
-	/* USER CODE END 5 */
+    /* USER CODE BEGIN 5 */
+    /* Infinite loop */
+    for (;;) {
+	osDelay(1);
+    }
+    /* USER CODE END 5 */
 }
 
 /**
@@ -538,15 +614,15 @@ void StartDefaultTask(void *argument) {
  * @retval None
  */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-	/* USER CODE BEGIN Callback 0 */
+    /* USER CODE BEGIN Callback 0 */
 
-	/* USER CODE END Callback 0 */
-	if (htim->Instance == TIM6) {
-		HAL_IncTick();
-	}
-	/* USER CODE BEGIN Callback 1 */
+    /* USER CODE END Callback 0 */
+    if (htim->Instance == TIM6) {
+	HAL_IncTick();
+    }
+    /* USER CODE BEGIN Callback 1 */
 
-	/* USER CODE END Callback 1 */
+    /* USER CODE END Callback 1 */
 }
 
 /**
@@ -554,12 +630,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
  * @retval None
  */
 void Error_Handler(void) {
-	/* USER CODE BEGIN Error_Handler_Debug */
-	/* User can add his own implementation to report the HAL error return state */
-	__disable_irq();
-	while (1) {
-	}
-	/* USER CODE END Error_Handler_Debug */
+    /* USER CODE BEGIN Error_Handler_Debug */
+    /* User can add his own implementation to report the HAL error return state */
+    __disable_irq();
+    while (1) {
+    }
+    /* USER CODE END Error_Handler_Debug */
 }
 
 #ifdef  USE_FULL_ASSERT

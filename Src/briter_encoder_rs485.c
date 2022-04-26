@@ -28,6 +28,8 @@ typedef union {
 	uint8_t buf[8];
 } Encoder_TX_u;
 
+uint8_t RS485_Enc_RX_buf[9];
+
 /** @defgroup briter_encoder_rs485 Private Functions
  * @{
  */
@@ -74,16 +76,29 @@ uint32_t BRITER_RS485_GetEncoderValue(Briter_Encoder_t *handler) {
 	return handler->encoder_value;
 }
 
-HAL_StatusTypeDef BRITER_RS485_GetEncoderValue_DMA(Briter_Encoder_t *handler) {
+HAL_StatusTypeDef BRITER_RS485_GetValue_DMA_TX(Briter_Encoder_t *handler) {
 	//Send encoder data
 	Encoder_TX_u send_t;
 	memset(&send_t, 0, sizeof(send_t));
 	//2 as user want to read 2 different register to obtain encoder value
 	Encoder_Send_Construct(&send_t, ENC_READ, handler->addr, BRITER_RS485_VALUE_ADDR, 2);
-	return Encoder_Transmit_DMA(handler->huart, send_t.buf, sizeof(send_t.buf));
+	HAL_StatusTypeDef status = Encoder_Transmit_DMA(handler->huart, send_t.buf, sizeof(send_t.buf));
+//	do{
+//	    status = Encoder_Transmit_DMA(handler->huart, send_t.buf, sizeof(send_t.buf));
+//	}while(status != HAL_OK || status != HAL_ERROR);
+//	status = HAL_UART_Receive_DMA(handler->huart, RS485_Enc_RX_buf, sizeof(RS485_Enc_RX_buf));
+	return status;
 }
 
-uint32_t BRITER_RS485_GetEncoderValue_DMA_Callback(Briter_Encoder_t *handler, uint8_t *pData) {
+HAL_StatusTypeDef BRITER_RS485_GetValue_DMA_RX(Briter_Encoder_t *handler) {
+	return HAL_UART_Receive_DMA(handler->huart, RS485_Enc_RX_buf, sizeof(RS485_Enc_RX_buf));
+}
+
+uint8_t BRITER_RS485_GetAddress_DMA_Callback(uint8_t *pData){
+    return pData[0];
+}
+
+uint32_t BRITER_RS485_GetValue_DMA_Callback(Briter_Encoder_t *handler, uint8_t *pData) {
 	//Check receive buffer
 	if (Encoder_CheckRX(pData, (uint8_t) (handler->addr), ENC_READ) != HAL_OK)
 		return BRITER_RS485_ERROR;
@@ -283,7 +298,7 @@ static HAL_StatusTypeDef Encoder_CheckRX(uint8_t *pData, uint8_t address, RS485_
  * @retval HAL status
  */
 static HAL_StatusTypeDef Encoder_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size) {
-	return HAL_UART_Transmit(huart, pData, Size, 20);
+	return HAL_UART_Transmit(huart, pData, Size, 8);
 }
 
 /**
@@ -294,7 +309,14 @@ static HAL_StatusTypeDef Encoder_Transmit(UART_HandleTypeDef *huart, uint8_t *pD
  * @retval HAL status
  */
 static HAL_StatusTypeDef Encoder_Transmit_DMA(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size) {
-	return HAL_UART_Transmit_DMA(huart, pData, Size);
+    HAL_StatusTypeDef status;
+    uint32_t start_t = HAL_GetTick();
+
+    do{
+	status = HAL_UART_Transmit_DMA(huart, pData, Size);
+    }while((status != HAL_OK && status != HAL_ERROR) && (HAL_GetTick() - start_t < 10) );
+    uint32_t time = HAL_GetTick() - start_t;
+    return status;
 }
 
 /**
@@ -305,7 +327,13 @@ static HAL_StatusTypeDef Encoder_Transmit_DMA(UART_HandleTypeDef *huart, uint8_t
  * @retval HAL status
  */
 static HAL_StatusTypeDef Encoder_Receive(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size) {
-    HAL_StatusTypeDef status = HAL_UART_Receive(huart, pData, Size, 20);
+    //Sometime, overrun occur due to high speed transmission and lost in packet.
+    //Overrun flag triggered will cause encoder to stop receive data
+    if (__HAL_UART_GET_FLAG(huart, UART_FLAG_ORE)){
+	__HAL_UART_CLEAR_OREFLAG(huart);
+    }
+
+    HAL_StatusTypeDef status = HAL_UART_Receive(huart, pData, Size, 10);
 
     return status;
 }

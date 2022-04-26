@@ -26,6 +26,8 @@
 /* USER CODE END Includes */
 extern DMA_HandleTypeDef hdma_uart4_rx;
 
+extern DMA_HandleTypeDef hdma_uart4_tx;
+
 extern DMA_HandleTypeDef hdma_usart1_rx;
 
 extern DMA_HandleTypeDef hdma_usart1_tx;
@@ -515,6 +517,23 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart) {
 	}
 
 	__HAL_LINKDMA(huart, hdmarx, hdma_uart4_rx);
+	/* UART4_TX Init */
+	hdma_uart4_tx.Instance = DMA1_Stream4;
+	hdma_uart4_tx.Init.Channel = DMA_CHANNEL_4;
+	hdma_uart4_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+	hdma_uart4_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+	hdma_uart4_tx.Init.MemInc = DMA_MINC_ENABLE;
+	hdma_uart4_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+	hdma_uart4_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+	hdma_uart4_tx.Init.Mode = DMA_NORMAL;
+	hdma_uart4_tx.Init.Priority = DMA_PRIORITY_LOW;
+	hdma_uart4_tx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+	if (HAL_DMA_Init(&hdma_uart4_tx) != HAL_OK)
+	{
+	  Error_Handler();
+	}
+
+	__HAL_LINKDMA(huart,hdmatx,hdma_uart4_tx);
 	/* USART1 interrupt Init */
 	HAL_NVIC_SetPriority(UART4_IRQn, 5, 0);
 	HAL_NVIC_EnableIRQ(UART4_IRQn);

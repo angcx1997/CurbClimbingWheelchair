@@ -20,14 +20,14 @@
  *	 - Polling Mode
  *	 	 - BRITER_RS485_GetEncoderValue()
  *	 - DMA Mode
- *	 	 -# all BRITER_RS485_GetEncoderValue_DMA() in main
+ *	 	 -# all BRITER_RS485_GetValue_DMA() in main
  *	 	 	- call __HAL_DMA_DISABLE_IT(&hdma_usart, DMA_IT_HT) if half of the number of byte is corrupted
  *		 -# Add HAL_UART_TxCpltCallback() to code
  *		 -# In TxCmpltCallback, add
  *		 	- HAL_UART_Receive_DMA()
  *		 	- __HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT)
  *		 -# Add HAL_UART_RxCpltCallback()
- *		 	- Call BRITER_RS485_GetEncoderValue_DMA_Callback()
+ *		 	- Call BRITER_RS485_GetValue_DMA_Callback()
  *	 - Interrupt mode is not implemented
  *
  */
@@ -45,6 +45,7 @@
 #define BRITER_RS485_NO_OF_TURN		24			/*~<Maximum turn*/
 #define BRITER_RS485_MAX_VALUE	(BRITER_RS485_PPR * BRITER_RS485_NO_OF_TURN)
 /**@}*/
+
 
 
 /** Briter RS485 handler*/
@@ -71,7 +72,10 @@ typedef struct {
 #define BRITER_RS485_SET_MUL_5_ADDR			0x0F	/*!< Set current turn value to 5 turns*/
 /**@}*/
 
-#define BRITER_RS485_ERROR					-1		/*!< Briter RS485 Error Message*/
+#define BRITER_RS485_ERROR					0xFFFFFFFF		/*!< Briter RS485 Error Message*/
+
+//Used as receive buffer
+extern uint8_t RS485_Enc_RX_buf[9];
 
 /** Briter RS485 Baudrate Selection */
 typedef enum {
@@ -116,7 +120,23 @@ uint32_t BRITER_RS485_GetEncoderValue(Briter_Encoder_t *handler);
  * @retval HAL status
  * @note   If complete, DMA_TX_Cplt will be called if DMA interrupt is activated
  */
-HAL_StatusTypeDef BRITER_RS485_GetEncoderValue_DMA(Briter_Encoder_t *handler);
+HAL_StatusTypeDef BRITER_RS485_GetValue_DMA_TX(Briter_Encoder_t *handler);
+
+/**
+ * @brief  Receive info of encoder to read through DMA.
+ * @param  handler: encoder handler
+ * @retval HAL status
+ * @note   If complete, DMA_Rx_Cplt will be called if DMA interrupt is activated
+ */
+HAL_StatusTypeDef BRITER_RS485_GetValue_DMA_RX(Briter_Encoder_t *handler);
+
+/**
+ * @brief  Get address of encoderduring reception.
+ * @param  handler: encoder handler
+ * @retval HAL status
+ * @note   Use inside DMA RX Cmplt Callback
+ */
+uint8_t BRITER_RS485_GetAddress_DMA_Callback(uint8_t *pData);
 
 /**
  * @brief  Get encoder value though DMA during reception.
@@ -124,7 +144,7 @@ HAL_StatusTypeDef BRITER_RS485_GetEncoderValue_DMA(Briter_Encoder_t *handler);
  * @retval HAL status
  * @note   Use inside DMA RX Idle Callback
  */
-uint32_t BRITER_RS485_GetEncoderValue_DMA_Callback(Briter_Encoder_t *handler, uint8_t *pData);
+uint32_t BRITER_RS485_GetValue_DMA_Callback(Briter_Encoder_t *handler, uint8_t *pData);
 
 /**
  * @brief Set encoder baudrate.
