@@ -48,6 +48,7 @@
 #include "briter_encoder_rs485.h"
 #include "tfmini.h"
 #include "usb_device.h"
+#include "encoder_util.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -104,6 +105,7 @@ extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim8;
 
 extern UART_HandleTypeDef huart1;
+extern UART_HandleTypeDef huart2;
 extern UART_HandleTypeDef huart3;
 extern UART_HandleTypeDef huart4;
 extern UART_HandleTypeDef huart6;
@@ -195,6 +197,12 @@ Debug_Tick_t encoder_tick_taken = {
 	0
 };
 TickType_t total_t;
+
+extern wheel_velocity_t left_wheel, right_wheel;
+
+uint8_t battery_rx_buf[40];
+extern batteryHandler battery;
+
 /* USER CODE END Variables */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -293,8 +301,16 @@ void Task_NormalDrive(void *param) {
     MotorStartup(&sabertooth_handler);
     MotorStop(&sabertooth_handler);
 
+//    wheel_velocity_t left_wheel = {0}, right_wheel = {0};
     while (1) {
 	if (lifting_mode == NORMAL) {
+	    /*Data Processing*/
+//	    	TickType_t start_t = xTaskGetTickCount();
+//	    	float tmp = calculateVelocity(&left_wheel, base_encoder[0].encoder_value);
+//	    	float tmp1 = calculateVelocity(&right_wheel, base_encoder[1].encoder_value);
+//	    	TickType_t total_t = xTaskGetTickCount();
+
+
 	    //When user in normal driving mode
 	    LED_Mode_Configuration(NORMAL);
 
@@ -407,13 +423,13 @@ void Task_Sensor(void *param) {
      */
 
     //Initialize encoder sensor for base wheel
-    BRITER_RS485_Init(&(base_encoder[0]), 0x01, &huart4);
-    BRITER_RS485_Init(&(base_encoder[1]), 0x02, &huart4);
-    encoder_tick_taken.count = 1;
+    BRITER_RS485_Init(&(base_encoder[0]), 0x02, &huart4);
+    BRITER_RS485_Init(&(base_encoder[1]), 0x01, &huart4);
+    //Flag to alternate the address of rs485 tx to avoid congestion
     uint8_t base_encoder_tx_flag = 0;
 
     //Ensure periodic execution
-    const TickType_t period = pdMS_TO_TICKS(10);
+    const TickType_t period = pdMS_TO_TICKS(20);
     TickType_t end_t;
     while (1) {
 	//******************************************************************************
@@ -461,23 +477,15 @@ void Task_Sensor(void *param) {
 	    BRITER_RS485_GetValue_DMA_TX(&base_encoder[1]);
 	    base_encoder_tx_flag --;
 	}
+
 	BRITER_RS485_GetValue_DMA_RX(base_encoder);
-
-	/*Data Processing*/
-
-
 
 	/*Error Handling*/
 	//If encoder is faulty, no data reception, suspend all task
-	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 500 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 500) {
+	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 5000 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 5000) {
 	    lifting_mode = DANGER;
 	    xTaskNotify(task_control, 0, eNoAction);
 	}
-//		encoder_tick_taken.new_tick = xTaskGetTickCount() - start_t;
-//		encoder_tick_taken.max_tick = MAX(encoder_tick_taken.new_tick, encoder_tick_taken.max_tick);
-//		encoder_tick_taken.sum_tick += encoder_tick_taken.new_tick;
-//		encoder_tick_taken.avg_tick = (float)encoder_tick_taken.sum_tick / (float)encoder_tick_taken.count++;
-
 	//******************************************************************************
 	/*Common Sensor*/
 	//Distance sensor data acquisition is managed by DMA
@@ -488,14 +496,7 @@ void Task_Sensor(void *param) {
 	    lifting_mode = DANGER;
 	    xTaskNotify(task_control, 0, eNoAction);
 	}
-//	TickType_t end_t = xTaskGetTickCount();
-//	total_t = end_t - start_t;
 
-	total_t = xTaskGetTickCount() - end_t;;
-	end_t = xTaskGetTickCount();
-
-
-//	vTaskDelayUntil(&tick, period);
 	vTaskDelay(period);
     }
 }
@@ -752,30 +753,30 @@ void Task_Climbing(void *param) {
 
 	//*****VERY IMPORTANT AND MUST NOT BE COMMENTED OUT**********************************//
 	//Safety check for to avoid the climbing leg overturn
-//	if (encoderFront.encoder_pos < FRONT_FULL_ROTATION_ENC / 2) {
-//	    if (encoderFront.encoder_pos > MAX_FRONT_ALLOWABLE_ENC && speed[FRONT_INDEX] > 0)
-//		speed[FRONT_INDEX] = 0;
-//	}
-//	else {
-//	    if (encoderFront.encoder_pos < MIN_FRONT_ALLOWABLE_ENC && speed[FRONT_INDEX] < 0)
-//		speed[FRONT_INDEX] = 0;
-//	}
-//
-//	if (encoderBack.encoder_pos < BACK_FULL_ROTATION_ENC / 2) {
-//	    if (encoderBack.encoder_pos > MAX_BACK_ALLOWABLE_ENC && speed[BACK_INDEX] > 0)
-//		speed[BACK_INDEX] = 0;
-//	}
-//	else {
-//	    if (encoderBack.encoder_pos < MIN_BACK_ALLOWABLE_ENC && speed[BACK_INDEX] < 0)
-//		speed[BACK_INDEX] = 0;
-//	}
-//	//If lifting mode is normal, notify driving task
-//	if (lifting_mode == NORMAL) {
-//	    speed[FRONT_INDEX] = 0;
-//	    speed[BACK_INDEX] = 0;
-//	    climb_first_iteration = 1;
-//	    xTaskNotify(task_normalDrive, 0, eNoAction);
-//	}
+	if (encoderFront.encoder_pos < FRONT_FULL_ROTATION_ENC / 2) {
+	    if (encoderFront.encoder_pos > MAX_FRONT_ALLOWABLE_ENC && speed[FRONT_INDEX] > 0)
+		speed[FRONT_INDEX] = 0;
+	}
+	else {
+	    if (encoderFront.encoder_pos < MIN_FRONT_ALLOWABLE_ENC && speed[FRONT_INDEX] < 0)
+		speed[FRONT_INDEX] = 0;
+	}
+
+	if (encoderBack.encoder_pos < BACK_FULL_ROTATION_ENC / 2) {
+	    if (encoderBack.encoder_pos > MAX_BACK_ALLOWABLE_ENC && speed[BACK_INDEX] > 0)
+		speed[BACK_INDEX] = 0;
+	}
+	else {
+	    if (encoderBack.encoder_pos < MIN_BACK_ALLOWABLE_ENC && speed[BACK_INDEX] < 0)
+		speed[BACK_INDEX] = 0;
+	}
+	//If lifting mode is normal, notify driving task
+	if (lifting_mode == NORMAL) {
+	    speed[FRONT_INDEX] = 0;
+	    speed[BACK_INDEX] = 0;
+	    climb_first_iteration = 1;
+	    xTaskNotify(task_normalDrive, 0, eNoAction);
+	}
 	//**********************************************************************************//
 
 	runMotor(&rearMotor, speed[FRONT_INDEX]);
@@ -816,18 +817,18 @@ void Task_USB(void *param) {
 }
 
 void Task_Battery(void *param) {
-    batteryHandler battery;
-//    Battery_Init(&battery, &huart1);
+
+    Battery_Init(&battery, &huart2);
     uint8_t error_count = 0;
 
     while (1) {
-//	if (Battery_GetState(&battery) != HAL_OK) {
-//	    error_count++;
-//	}
-//		if (error_count > 50)
-	vTaskDelay(pdMS_TO_TICKS(1000));
-//		vTaskDelay(pdMS_TO_TICKS(60000));
-
+	//TODO: Error handling
+	if (Battery_GetState(&battery) != HAL_OK) {
+	    error_count++;
+	}
+	else{
+	    vTaskDelay(pdMS_TO_TICKS(1000));
+	}
     }
 }
 
@@ -860,7 +861,7 @@ static void LED_Mode_Configuration(Operation_Mode mode) {
  * @param  dist Distance to be moved by hub motor
  * @retval True if climb forward the specified distance.
  */
-static bool climbingForward(float dist) {
+static bool climbingForward(float dist){
     static uint32_t prev_tick = 0;
     static int32_t prev_enc;
     static bool first_loop = true;

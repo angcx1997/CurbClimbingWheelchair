@@ -83,10 +83,6 @@ HAL_StatusTypeDef BRITER_RS485_GetValue_DMA_TX(Briter_Encoder_t *handler) {
 	//2 as user want to read 2 different register to obtain encoder value
 	Encoder_Send_Construct(&send_t, ENC_READ, handler->addr, BRITER_RS485_VALUE_ADDR, 2);
 	HAL_StatusTypeDef status = Encoder_Transmit_DMA(handler->huart, send_t.buf, sizeof(send_t.buf));
-//	do{
-//	    status = Encoder_Transmit_DMA(handler->huart, send_t.buf, sizeof(send_t.buf));
-//	}while(status != HAL_OK || status != HAL_ERROR);
-//	status = HAL_UART_Receive_DMA(handler->huart, RS485_Enc_RX_buf, sizeof(RS485_Enc_RX_buf));
 	return status;
 }
 

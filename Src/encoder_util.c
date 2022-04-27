@@ -6,13 +6,14 @@
  */
 
 #include "encoder_util.h"
+#include <math.h>
 
-void calculateVelocity(wheel_velocity_t* wheel, uint32_t curr_position){
+float calculateVelocity(wheel_velocity_t* wheel, uint32_t curr_position){
     //If first iteration
     if(wheel->last_position == 0 && wheel->last_tick == 0){
 	wheel->last_position = curr_position;
 	wheel->last_tick = HAL_GetTick();
-	return;
+	return 0.0;
     }
     //Period between two tick in ms
     uint8_t tick_period = HAL_GetTickFreq();
@@ -23,23 +24,21 @@ void calculateVelocity(wheel_velocity_t* wheel, uint32_t curr_position){
 
     //Encoders will wrap around, offset the wrap around if it does happen
     //Wrap around is detected by  checking if the difference in encoder value exceeds half the max encoder value
-    if (wheel->d_position < -BRITER_RS485_MAX_VALUE / 2.0)
+    if (wheel->d_position < -BRITER_RS485_MAX_VALUE * 0.5)
 	wheel->d_position += BRITER_RS485_MAX_VALUE;
-    else if(wheel->d_position > BRITER_RS485_MAX_VALUE / 2.0)
+    else if(wheel->d_position > BRITER_RS485_MAX_VALUE * 0.5)
 	wheel->d_position -= BRITER_RS485_MAX_VALUE;
-
 
     wheel->total_position += wheel->d_position;
 
-    //Calculate velocity
-    wheel->velocity = (float)wheel->d_position / dt;
+    //Calculate angular_velocity
+    wheel->angular_velocity = 1000.0 * (float)(wheel->d_position) / BRITER_RS485_PPR  * 2.0 * 3.1415926 / (float)dt;
 
     //Store last reading for subsequent calculation
     wheel->last_tick = HAL_GetTick();
     wheel->last_position = curr_position;
 
-
-
+    return wheel->angular_velocity;
 }
 
 

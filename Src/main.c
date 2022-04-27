@@ -43,6 +43,7 @@
 #include "differentialDrive.h"
 #include "DifferentialDrivetoSabertooth.h"
 #include "briter_encoder_rs485.h"
+#include "battery.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -50,6 +51,7 @@
 #include "timers.h"
 #include "tfmini.h"
 #include "semphr.h"
+#include "encoder_util.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -185,6 +187,9 @@ uint8_t usbBuffer[1];
 
 static uint16_t prev_dist = 0;
 extern Operation_Mode lifting_mode;
+
+batteryHandler battery;
+wheel_velocity_t left_wheel = {0}, right_wheel = {0};
 /* USER CODE END 0 */
 
 /**
@@ -269,10 +274,6 @@ int main(void) {
     configASSERT(status == pdPASS);
     status = xTaskCreate(Task_Joystick, "Joystick Task", 250, NULL, 2, &task_joystick);
     configASSERT(status == pdPASS);
-//    status = xTaskCreate(Task_Climb_Sensor, "Climb Sensor Task", 300, NULL, 2, &task_climb_sensor);
-//    configASSERT(status == pdPASS);
-//    status = xTaskCreate(Task_Navigation_Sensor, "Navigation Sensor Task", 300, NULL, 2, &task_navigation_sensor);
-//	configASSERT(status == pdPASS);
     status = xTaskCreate(Task_Sensor, "Sensor Task", 400, NULL, 2, &task_sensor);
     configASSERT(status == pdPASS);
     status = xTaskCreate(Task_NormalDrive, "Normal Drive Task", 250, NULL, 2, &task_normalDrive);
@@ -421,25 +422,6 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 }
 
 /**
- * @brief  Tx Transfer completed callbacks.
- * @param  huart  Pointer to a UART_HandleTypeDef structure that contains
- *                the configuration information for the specified UART module.
- * @retval None
- */
-//void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
-//    //RS485 Briter encoder callback
-//    if (huart->Instance == UART4) {
-//	if (base_encoder_tx_flag % 2 == 0) {
-//	    BRITER_RS485_GetValue_DMA_TX(&base_encoder[0]);
-//	    base_encoder_tx_flag ++;
-//	}else
-//	{
-//	    BRITER_RS485_GetValue_DMA_TX(&base_encoder[1]);
-//	    base_encoder_tx_flag --;
-//	}
-//    }
-//}
-/**
  * @brief  Rx Transfer completed callbacks.
  * @param  huart  Pointer to a UART_HandleTypeDef structure that contains
  *                the configuration information for the specified UART module.
@@ -453,6 +435,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	    uint32_t retval = BRITER_RS485_GetValue_DMA_Callback(&base_encoder[0], RS485_Enc_RX_buf);
 	    if (retval != BRITER_RS485_ERROR) {
 		base_encoder[0].encoder_value = retval;
+		calculateVelocity(&left_wheel, base_encoder[0].encoder_value);
 		last_rs485_enc_t[0] = xTaskGetTickCount();
 	    }
 	}
@@ -460,14 +443,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	    uint32_t retval = BRITER_RS485_GetValue_DMA_Callback(&base_encoder[1], RS485_Enc_RX_buf);
 	    if (retval != BRITER_RS485_ERROR) {
 		base_encoder[1].encoder_value = retval;
+		calculateVelocity(&right_wheel, base_encoder[1].encoder_value);
 		last_rs485_enc_t[1] = xTaskGetTickCount();
 	    }
 	}
-//	    __HAL_UART_CLEAR_OREFLAG(&huart4);
-//	    __HAL_UART_CLEAR_NEFLAG(&huart4);
-//	    __HAL_UART_CLEAR_FEFLAG(&huart4);
-//	HAL_UART_AbortReceive(&huart4);
-//	BRITER_RS485_GetValue_DMA_RX(base_encoder);
 	return;
     }
 

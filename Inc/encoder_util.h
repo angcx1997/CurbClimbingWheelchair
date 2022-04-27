@@ -20,7 +20,7 @@ typedef struct{
     uint32_t	curr_position;		/*!<Current position of encoder*/
     int32_t	d_position;		/*!<Position travelled during d_tick*/
     int32_t	total_position;		/*!<Position with direction*/
-    float 	velocity;		/*!<Velocity of encoder*/
+    float 	angular_velocity;	/*!<Velocity of encoder*/
     uint32_t	last_tick;		/*!<Last time function get called*/
 }wheel_velocity_t;
 
@@ -28,9 +28,9 @@ typedef struct{
  * @brief Calculate velocity of wheel through encoder and update wheel_velocity_t
  * @param wheel pointer to wheel velocity struct
  * @param curr_position latest encoder reading
- * @retval None
+ * @retval angular velocity (in rad/s)
  */
-void calculateVelocity(wheel_velocity_t* wheel, uint32_t curr_position);
+float calculateVelocity(wheel_velocity_t* wheel, uint32_t curr_position);
 
 
 

@@ -41,7 +41,7 @@
 /** @name Encoder Characteristic
  */
 /**@{*/
-#define BRITER_RS485_PPR			4096		/*~<Pulse per revolution*/
+#define BRITER_RS485_PPR			4096.0		/*~<Pulse per revolution*/
 #define BRITER_RS485_NO_OF_TURN		24			/*~<Maximum turn*/
 #define BRITER_RS485_MAX_VALUE	(BRITER_RS485_PPR * BRITER_RS485_NO_OF_TURN)
 /**@}*/

@@ -13,7 +13,6 @@
 
 #define NUM_BATTERY 14
 
-
 typedef struct{
 	uint16_t total_voltage; 			/*!< Unit:10mV >*/
 	uint16_t current;					/*!< Unit:10mA, +ve:charging, -ve:discharging>*/
@@ -60,7 +59,7 @@ HAL_StatusTypeDef Battery_GetState(batteryHandler* battery_handler);
  * @brief Process message that is received from the uart dma
  * @param battery_handler 	pointer to battery handler
  */
-void Battery_ReadState(batteryHandler* battery_handler, uint8_t receive_buf[]);
+HAL_StatusTypeDef Battery_ReadState(batteryHandler* battery_handler, uint8_t receive_buf[]);
 
 
 

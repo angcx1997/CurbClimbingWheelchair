@@ -27,6 +27,7 @@ DMA_HandleTypeDef hdma_uart4_rx;
 DMA_HandleTypeDef hdma_uart4_tx;
 DMA_HandleTypeDef hdma_usart1_rx;
 DMA_HandleTypeDef hdma_usart1_tx;
+DMA_HandleTypeDef hdma_usart2_rx;
 DMA_HandleTypeDef hdma_usart3_rx;
 DMA_HandleTypeDef hdma_usart3_tx;
 DMA_HandleTypeDef hdma_usart6_rx;
@@ -615,6 +616,9 @@ static void MX_DMA_Init(void) {
     /* DMA1_Stream4_IRQn interrupt configuration */
     HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
+    /* DMA1_Stream5_IRQn interrupt configuration */
+    HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
     /* DMA2_Stream1_IRQn interrupt configuration */
     HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
