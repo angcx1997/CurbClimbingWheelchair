@@ -32,9 +32,9 @@ extern "C" {
  * ONEBUTTON:	Button will initial the climbing procedure
  * USB_CONTROL: Require computer GUI
  */
-#define BUTTON_CONTROL
+//#define BUTTON_CONTROL
 //#define USB_CONTROL
-//#define ONE_BUTTON_CONTROL_CURB_CLIMBING
+#define ONE_BUTTON_CONTROL_CURB_CLIMBING
 //#define USB_CMD_CONTROL
 
 /* Includes ------------------------------------------------------------------*/
@@ -65,7 +65,7 @@ typedef enum {
 /* USER CODE BEGIN EC */
 #define FREQUENCY 1000
 
-#define LEFT_INDEX				0
+#define LEFT_INDEX			0
 #define RIGHT_INDEX 			1
 #define FRONT_INDEX			0
 #define BACK_INDEX			1

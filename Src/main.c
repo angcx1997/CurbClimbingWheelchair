@@ -190,7 +190,7 @@ static uint16_t prev_dist = 0;
 extern Operation_Mode lifting_mode;
 
 batteryHandler battery;
-wheel_velocity_t left_wheel = {0}, right_wheel = {0};
+wheel_velocity_t base_velocity[2];
 /* USER CODE END 0 */
 
 /**
@@ -435,20 +435,20 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 //RS485 Briter encoder callback
     if (huart->Instance == UART4) {
 	uint8_t address = BRITER_RS485_GetAddress_DMA_Callback(RS485_Enc_RX_buf);
-	if (address == base_encoder[0].addr) {
-	    uint32_t retval = BRITER_RS485_GetValue_DMA_Callback(&base_encoder[0], RS485_Enc_RX_buf);
+	if (address == base_encoder[LEFT_INDEX].addr) {
+	    uint32_t retval = BRITER_RS485_GetValue_DMA_Callback(&base_encoder[LEFT_INDEX], RS485_Enc_RX_buf);
 	    if (retval != BRITER_RS485_ERROR) {
-		base_encoder[0].encoder_value = retval;
-		calculateVelocity(&left_wheel, base_encoder[0].encoder_value);
-		last_rs485_enc_t[0] = xTaskGetTickCount();
+		base_encoder[LEFT_INDEX].encoder_value = retval;
+		calculateVelocity(&base_velocity[LEFT_INDEX], base_encoder[LEFT_INDEX].encoder_value);
+		last_rs485_enc_t[LEFT_INDEX] = xTaskGetTickCount();
 	    }
 	}
-	else if (address == base_encoder[1].addr) {
-	    uint32_t retval = BRITER_RS485_GetValue_DMA_Callback(&base_encoder[1], RS485_Enc_RX_buf);
+	else if (address == base_encoder[RIGHT_INDEX].addr) {
+	    uint32_t retval = BRITER_RS485_GetValue_DMA_Callback(&base_encoder[RIGHT_INDEX], RS485_Enc_RX_buf);
 	    if (retval != BRITER_RS485_ERROR) {
-		base_encoder[1].encoder_value = retval;
-		calculateVelocity(&right_wheel, base_encoder[1].encoder_value);
-		last_rs485_enc_t[1] = xTaskGetTickCount();
+		base_encoder[RIGHT_INDEX].encoder_value = retval;
+		calculateVelocity(&base_velocity[RIGHT_INDEX], base_encoder[RIGHT_INDEX].encoder_value);
+		last_rs485_enc_t[RIGHT_INDEX] = xTaskGetTickCount();
 	    }
 	}
 	return;

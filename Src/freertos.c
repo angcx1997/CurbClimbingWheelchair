@@ -199,9 +199,8 @@ extern Briter_Encoder_t base_encoder[2];
 Debug_Tick_t encoder_tick_taken = {
 	0
 };
-TickType_t total_t;
 
-extern wheel_velocity_t left_wheel, right_wheel;
+extern wheel_velocity_t base_velocity[2];
 
 uint8_t battery_rx_buf[40];
 extern batteryHandler battery;
@@ -272,11 +271,17 @@ void Task_Keyboard(void *param) {
 	button_state.button2 = (button2.state == 1) ? 1 : 0;
 	button_state.button3 = (button3.state == 1) ? 1 : 0;
 
-	//Use button 0 to get out of STOP mode and enter into curb detected
+	//Use button 1 to get out of STOP mode and enter into curb detected
 	//Where the system is only allowed to move backward
 	if (button_state.button1 == 1 && lifting_mode == STOP) {
 	    lifting_mode = CURB_DETECTED;
 	    xTaskNotify(task_normalDrive, 0, eNoAction);
+	}
+	//Use button 2 to get out of STOP mode and enter into curb detected
+	//Where the system is only allowed to move backward
+	if (button_state.button2 == 1) {
+	    lifting_mode = DANGER;
+	    xTaskNotify(task_control, 0, eNoAction);
 	}
 	vTaskDelayUntil(&tick, period);
     }
@@ -299,6 +304,8 @@ void Task_NormalDrive(void *param) {
     };
 
     //Initialize base wheel
+    memset(&base_velocity[LEFT_INDEX], 0, sizeof(wheel_velocity_t));
+    memset(&base_velocity[RIGHT_INDEX], 0, sizeof(wheel_velocity_t));
     DDrive_Init(&differential_drive_handler, FREQUENCY);
     MotorInit(&sabertooth_handler, 128, &huart6);
     MotorStartup(&sabertooth_handler);
@@ -439,7 +446,6 @@ void Task_Sensor(void *param) {
 
     //Ensure periodic execution
     const TickType_t period = pdMS_TO_TICKS(10);
-    TickType_t end_t;
     while (1) {
 	//******************************************************************************
 	/*Climbing Sensor Data Acquisition and Processing*/
@@ -491,7 +497,7 @@ void Task_Sensor(void *param) {
 
 	/*Error Handling*/
 	//If encoder is faulty, no data reception, suspend all task
-	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 5000 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 5000) {
+	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 500 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 500) {
 	    lifting_mode = DANGER;
 	    xTaskNotify(task_control, 0, eNoAction);
 	}
@@ -500,7 +506,6 @@ void Task_Sensor(void *param) {
 	//Distance sensor data acquisition is managed by DMA
 	//Error Handling
 	//UART error cause by noise flag, framing, overrun error happens during multibuffer dma communication
-	//TODO: Use Error callback function to re-initialize callback or act as a flag to reinstate reception
 	if (xTaskGetTickCount() - last_tf_mini_t > 500) {
 	    lifting_mode = DANGER;
 	    xTaskNotify(task_control, 0, eNoAction);
@@ -548,10 +553,6 @@ void Task_Joystick(void *param) {
 		xQueueReset(queue_joystick_raw);
 	    }
 
-#ifdef DEBUGGING
-	    x = joystick_handler.x;
-	    y = joystick_handler.y;
-#endif
 	    joystick_ptr = &joystick_handler;
 	    xSemaphoreGive(mutex_joystick);
 	}
@@ -856,8 +857,10 @@ void Task_Battery(void *param) {
 	xQueueSend(queue_battery_level, (void*)&voltage_level, 0);
 	vTaskDelay(pdMS_TO_TICKS(10000));
 	//Error Handling
-	if(error_count > 0){
+	if(error_count > 50){
 	    //Cannot read from BMS
+	    uint8_t dummy;
+	    (void)dummy;
 	}
     }
 }
