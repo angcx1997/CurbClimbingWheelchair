@@ -70,7 +70,9 @@ typedef struct {
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#ifndef ULONG_MAX
+    #define ULONG_MAX 0xFFFFFFFF
+#endif
 //#define DEBUGGING
 #ifndef MAX
     #define MAX(x, y) (((x) > (y)) ? (x) : (y))
@@ -134,6 +136,7 @@ extern xSemaphoreHandle mutex_joystick;
 extern TimerHandle_t timer_buzzer;
 
 extern EncoderHandle encoderBack;
+extern QueueHandle_t queue_battery_level;
 extern EncoderHandle encoderFront;
 
 /*Used to store climbing leg speed*/
@@ -301,7 +304,8 @@ void Task_NormalDrive(void *param) {
     MotorStartup(&sabertooth_handler);
     MotorStop(&sabertooth_handler);
 
-//    wheel_velocity_t left_wheel = {0}, right_wheel = {0};
+    //Battery level
+    uint16_t voltage_level = 25;
     while (1) {
 	if (lifting_mode == NORMAL) {
 	    /*Data Processing*/
@@ -359,6 +363,11 @@ void Task_NormalDrive(void *param) {
 	    MotorStop(&sabertooth_handler);
 	    xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
 	    continue;
+	}
+
+	//Receive voltage from queue battery
+	if(uxQueueMessagesWaiting(queue_battery_level)){
+	    xQueueReceive(queue_battery_level, &voltage_level, 0);
 	}
 
 	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
@@ -429,7 +438,7 @@ void Task_Sensor(void *param) {
     uint8_t base_encoder_tx_flag = 0;
 
     //Ensure periodic execution
-    const TickType_t period = pdMS_TO_TICKS(20);
+    const TickType_t period = pdMS_TO_TICKS(10);
     TickType_t end_t;
     while (1) {
 	//******************************************************************************
@@ -518,11 +527,18 @@ void Task_Joystick(void *param) {
 
     while (1) {
 	ADC_DataRequest();
-	//Use mutex to safeguard joystick data being accessed by task_normal_drive
+	//Use mutex to safeguard joystick data being accessed and modified by task_normal_drive
 	if (xSemaphoreTake(mutex_joystick, pdMS_TO_TICKS(5)) == pdTRUE) {
-	    if (xQueueReceive(queue_joystick_raw, &(joystick_handler), 50) == pdPASS) {
+	    if(xTaskNotifyWait(0x00, ULONG_MAX, 0, 50) == pdTRUE){
+		int16_t adc_rawData[8];
+		ADC_Read(adc_rawData);
+		joystick_handler.x = adc_rawData[2];
+		joystick_handler.y = adc_rawData[1];
 		Joystick_CalculatePos(&joystick_handler);
 	    }
+//	    if (xQueueReceive(queue_joystick_raw, &(joystick_handler), 50) == pdPASS) {
+//		Joystick_CalculatePos(&joystick_handler);
+//	    }
 	    else {
 		//If no data is available, force reading to zero
 		joystick_handler.x = 0;
@@ -820,14 +836,28 @@ void Task_Battery(void *param) {
 
     Battery_Init(&battery, &huart2);
     uint8_t error_count = 0;
+    uint16_t voltage_level = 25; //nominal voltage
 
     while (1) {
-	//TODO: Error handling
+	//Data acquisition from BMS
 	if (Battery_GetState(&battery) != HAL_OK) {
 	    error_count++;
 	}
 	else{
-	    vTaskDelay(pdMS_TO_TICKS(1000));
+	    voltage_level = battery.battery_info.total_voltage;
+	    error_count = 0;
+	}
+
+	if(uxQueueSpacesAvailable(queue_battery_level) == 0){
+	    //force the top message out
+	    uint8_t dummy;
+	    xQueueReceive(queue_battery_level, &dummy, 0);
+	}
+	xQueueSend(queue_battery_level, (void*)&voltage_level, 0);
+	vTaskDelay(pdMS_TO_TICKS(10000));
+	//Error Handling
+	if(error_count > 0){
+	    //Cannot read from BMS
 	}
     }
 }
@@ -996,7 +1026,6 @@ static bool in_climb_process(int front_enc, int back_enc) {
 	is_lifting = true;
     else
 	is_lifting = false;
-
     /*
      *2. During lifting, due to fixed point at the back climbing wheel.
      *The wheelchair would be pulled back if the back wheel not traveling while the its lifting

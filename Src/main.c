@@ -126,6 +126,7 @@ TaskHandle_t task_usb;
 TaskHandle_t task_battery;
 
 QueueHandle_t queue_joystick_raw;
+QueueHandle_t queue_battery_level;
 QueueHandle_t encoder;
 
 xSemaphoreHandle mutex_joystick;
@@ -258,6 +259,8 @@ int main(void) {
     /* add queues, ... */
     queue_joystick_raw = xQueueCreate(5, sizeof(JoystickHandle)); //store joystick handler
     configASSERT(queue_joystick_raw != NULL);
+    queue_battery_level = xQueueCreate(5, sizeof(uint16_t)); //store joystick handler
+    configASSERT(queue_battery_level != NULL);
     /* USER CODE END RTOS_QUEUES */
 
     /* Create the thread(s) */
@@ -355,12 +358,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     switch (GPIO_Pin) {
 	/* Callback from joystick reading*/
 	case AD_BUSY_Pin: {
-	    int16_t adc_rawData[8];
-	    JoystickHandle joystick_handler_irq;
-	    ADC_Read(adc_rawData);
-	    joystick_handler_irq.x = adc_rawData[2];
-	    joystick_handler_irq.y = adc_rawData[1];
-	    xQueueSendFromISR(queue_joystick_raw, (void* )&joystick_handler_irq, &xHigherPriorityTaskWoken);
+	    xTaskNotifyFromISR(task_joystick, 0, eNoAction, &xHigherPriorityTaskWoken);
+//	    int16_t adc_rawData[8];
+//	    JoystickHandle joystick_handler_irq;
+//	    ADC_Read(adc_rawData);
+//	    joystick_handler_irq.x = adc_rawData[2];
+//	    joystick_handler_irq.y = adc_rawData[1];
+//	    xQueueSendFromISR(queue_joystick_raw, (void* )&joystick_handler_irq, &xHigherPriorityTaskWoken);
 	    break;
 	}
 	default:
