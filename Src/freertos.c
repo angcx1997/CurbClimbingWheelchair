@@ -74,6 +74,7 @@ typedef struct {
     #define ULONG_MAX 0xFFFFFFFF
 #endif
 //#define DEBUGGING
+#define DATA_LOGGING
 #ifndef MAX
     #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #endif
@@ -202,8 +203,12 @@ Debug_Tick_t encoder_tick_taken = {
 
 extern wheel_velocity_t base_velocity[2];
 
-uint8_t battery_rx_buf[40];
-extern batteryHandler battery;
+
+#ifdef DATA_LOGGING
+int LOG_left_vel  = 0;
+int LOG_right_vel = 0;
+uint16_t LOG_battery = 0;
+#endif
 
 /* USER CODE END Variables */
 
@@ -313,6 +318,11 @@ void Task_NormalDrive(void *param) {
 
     //Battery level
     uint16_t voltage_level = 25;
+
+
+#ifdef DATA_LOGGING
+    uint32_t tick_count = 0;
+#endif
     while (1) {
 	if (lifting_mode == NORMAL) {
 	    /*Data Processing*/
@@ -377,9 +387,38 @@ void Task_NormalDrive(void *param) {
 	    xQueueReceive(queue_battery_level, &voltage_level, 0);
 	}
 
-	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
+//	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
+//	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 	//TODO: Add PID controller here
+#ifdef DATA_LOGGING
+	/*============================================================================*/
+	/*Input sine wave*/
+//	uint16_t sampling_rate = 750;
+//	//generate sine wave
+//	float v = 0.75 * sin(2 * M_PI * tick_count/sampling_rate);
+//	tick_count++;
+//
+//	int motor_output_1 = v * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+//	int motor_output_2 = v * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+//	MotorThrottle(&sabertooth_handler, TARGET_2, motor_output_1);
+//	MotorThrottle(&sabertooth_handler, TARGET_1, motor_output_2);
+//
+//	LOG_battery = voltage_level;
+//	LOG_left_vel = motor_output_1;
+//	LOG_right_vel = motor_output_2;
+	/*============================================================================*/
+	/*Joystick input*/
+    	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
+    	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
+
+    	LOG_battery = voltage_level;
+	LOG_left_vel = differential_drive_handler.m_leftMotor * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+	LOG_right_vel = differential_drive_handler.m_rightMotor * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+	/*============================================================================*/
+#else
+    	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
 	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
+#endif
 	vTaskDelay(10);
     }
 }
@@ -834,6 +873,7 @@ void Task_USB(void *param) {
 }
 
 void Task_Battery(void *param) {
+    batteryHandler battery;
 
     Battery_Init(&battery, &huart2);
     uint8_t error_count = 0;
