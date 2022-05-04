@@ -75,7 +75,7 @@ typedef struct {
     #define ULONG_MAX 0xFFFFFFFF
 #endif
 //#define DEBUGGING
-#define DATA_LOGGING
+//#define DATA_LOGGING
 #ifndef MAX
     #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #endif
@@ -166,7 +166,7 @@ button_state_t button_state = {
 };
 
 JoystickHandle *joystick_ptr = NULL;
-Operation_Mode lifting_mode = NORMAL;
+Operation_Mode lifting_mode = RETRACTION;
 #ifdef DEBUGGING
 int x, y;
 #endif
@@ -553,8 +553,8 @@ void Task_Sensor(void *param) {
 	/*Error Handling*/
 	//If encoder is faulty, no data reception, suspend all task
 	if ((xTaskGetTickCount() - last_can_rx_t[0]) > 500 || (xTaskGetTickCount() - last_can_rx_t[1]) > 500) {
-//	    lifting_mode = DANGER;
-//	    xTaskNotify(task_control, 0, eNoAction);
+	    lifting_mode = DANGER;
+	    xTaskNotify(task_control, 0, eNoAction);
 	}
 
 	//******************************************************************************
@@ -574,8 +574,8 @@ void Task_Sensor(void *param) {
 	/*Error Handling*/
 	//If encoder is faulty, no data reception, suspend all task
 	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 500 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 500) {
-//	    lifting_mode = DANGER;
-//	    xTaskNotify(task_control, 0, eNoAction);
+	    lifting_mode = DANGER;
+	    xTaskNotify(task_control, 0, eNoAction);
 	}
 	//******************************************************************************
 	/*Common Sensor*/
@@ -583,8 +583,8 @@ void Task_Sensor(void *param) {
 	//Error Handling
 	//UART error cause by noise flag, framing, overrun error happens during multibuffer dma communication
 	if (xTaskGetTickCount() - last_tf_mini_t > 500) {
-//	    lifting_mode = DANGER;
-//	    xTaskNotify(task_control, 0, eNoAction);
+	    lifting_mode = DANGER;
+	    xTaskNotify(task_control, 0, eNoAction);
 	}
 
 	vTaskDelay(period);
