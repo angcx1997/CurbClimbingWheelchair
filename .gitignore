@@ -4,3 +4,5 @@ ScatWheelChair Debug.cfg
 ScatWheelChair Debug.launch
 .vscode/c_cpp_properties.json
 .vscode/settings.json
+script/*.csv
+

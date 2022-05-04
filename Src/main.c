@@ -44,7 +44,7 @@
 #include "DifferentialDrivetoSabertooth.h"
 #include "briter_encoder_rs485.h"
 #include "battery.h"
-
+#include "usbd_cdc_if.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"

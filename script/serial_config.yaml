@@ -1,0 +1,49 @@
+---
+# Filename
+csv-filename: data-logger.csv
+
+#Serial port config
+serial:
+  name: /dev/ttyACM0
+  baudrate: 750000
+  timeout: 0.1
+  stopbit: 1
+  parity: N
+  bytesize: 8
+
+# Start and end byte of the transfer
+soi: 0xFF
+eoi: 0xFB
+# size of byte user want to send include soi(1),eoi(1),checksum(1), size(2), info(user-defined)
+total_number_receive: 35
+
+#Write according to arrival sequence
+#data-type available:
+# float,
+# uint8_t, uint16_t, uint32_t,
+# int8_t, int16_t, int32_t
+data-logging:
+  data1:
+    name: battery
+    type: uint16_t
+  data2:
+    name: left_pwm
+    type: float
+  data3:
+    name: right_pwm
+    type: float
+  data4:
+    name: left_enc
+    type: uint32_t
+  data5:
+    name: right_enc
+    type: uint32_t
+  data6:
+    name: left_enc_vel
+    type: float
+  data7:
+    name: right_enc_vel
+    type: float
+  data8:
+    name: tick
+    type: uint32_t

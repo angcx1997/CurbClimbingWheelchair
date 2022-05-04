@@ -49,6 +49,7 @@
 #include "tfmini.h"
 #include "usb_device.h"
 #include "encoder_util.h"
+#include "../script/DataLogger.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -165,7 +166,7 @@ button_state_t button_state = {
 };
 
 JoystickHandle *joystick_ptr = NULL;
-Operation_Mode lifting_mode = RETRACTION;
+Operation_Mode lifting_mode = NORMAL;
 #ifdef DEBUGGING
 int x, y;
 #endif
@@ -205,9 +206,7 @@ extern wheel_velocity_t base_velocity[2];
 
 
 #ifdef DATA_LOGGING
-int LOG_left_vel  = 0;
-int LOG_right_vel = 0;
-uint16_t LOG_battery = 0;
+DataLogger_Msg_t datalog_msg;
 #endif
 
 /* USER CODE END Variables */
@@ -321,6 +320,7 @@ void Task_NormalDrive(void *param) {
 
 
 #ifdef DATA_LOGGING
+    DataLogger_Init(&datalog_msg);
     uint32_t tick_count = 0;
 #endif
     while (1) {
@@ -411,9 +411,46 @@ void Task_NormalDrive(void *param) {
     	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
     	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 
-    	LOG_battery = voltage_level;
-	LOG_left_vel = differential_drive_handler.m_leftMotor * SABERTOOTH_MAX_ALLOWABLE_VALUE;
-	LOG_right_vel = differential_drive_handler.m_rightMotor * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+    	//Declare variable
+    	uint16_byte_u LOG_battery;
+    	float_byte_u LOG_left_pwm;
+    	float_byte_u LOG_right_pwm;
+    	uint32_byte_u LOG_left_enc;
+    	uint32_byte_u LOG_right_enc;
+    	float_byte_u LOG_left_enc_vel;
+    	float_byte_u LOG_right_enc_vel;
+    	uint32_byte_u LOG_tick;
+
+    	//Define variable
+//    	LOG_battery.data = voltage_level;
+//    	LOG_left_pwm.data = differential_drive_handler.m_leftMotor;
+//    	LOG_right_pwm.data = differential_drive_handler.m_rightMotor;
+//    	LOG_left_enc.data = base_encoder[LEFT_INDEX].encoder_value;
+//    	LOG_right_enc.data = base_encoder[RIGHT_INDEX].encoder_value;
+//    	LOG_left_enc_vel.data = base_velocity[LEFT_INDEX].angular_velocity;
+//    	LOG_right_enc_vel.data = base_velocity[RIGHT_INDEX].angular_velocity;
+    	LOG_battery.data = 0xABCD;
+	LOG_left_pwm.data = 0.54321;
+	LOG_right_pwm.data = 0.56789;
+	LOG_left_enc.data = 0x12345670;
+	LOG_right_enc.data = 0x89ABCDEF;
+	LOG_left_enc_vel.data = 0.12345;
+	LOG_right_enc_vel.data = 0.67890;
+    	LOG_tick.data = xTaskGetTickCount();
+
+    	DataLogger_AddMessage(&datalog_msg, LOG_battery.array, sizeof(LOG_battery.array));
+    	DataLogger_AddMessage(&datalog_msg, LOG_left_pwm.array, sizeof(LOG_left_pwm.array));
+    	DataLogger_AddMessage(&datalog_msg, LOG_right_pwm.array, sizeof(LOG_right_pwm.array));
+    	DataLogger_AddMessage(&datalog_msg, LOG_left_enc.array, sizeof(LOG_left_enc.array));
+    	DataLogger_AddMessage(&datalog_msg, LOG_right_enc.array, sizeof(LOG_right_enc.array));
+	DataLogger_AddMessage(&datalog_msg, LOG_left_enc_vel.array, sizeof(LOG_left_enc_vel.array));
+	DataLogger_AddMessage(&datalog_msg, LOG_right_enc_vel.array, sizeof(LOG_right_enc_vel.array));
+	DataLogger_AddMessage(&datalog_msg, LOG_tick.array, sizeof(LOG_tick.array));
+
+	//4. After added all the message, call complete tx message to add check to ensure data integrity
+	DataLogger_CompleteTxMessage(&datalog_msg);
+	CDC_Transmit_FS(datalog_msg.pMsg, datalog_msg.size);
+
 	/*============================================================================*/
 #else
     	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
@@ -516,8 +553,8 @@ void Task_Sensor(void *param) {
 	/*Error Handling*/
 	//If encoder is faulty, no data reception, suspend all task
 	if ((xTaskGetTickCount() - last_can_rx_t[0]) > 500 || (xTaskGetTickCount() - last_can_rx_t[1]) > 500) {
-	    lifting_mode = DANGER;
-	    xTaskNotify(task_control, 0, eNoAction);
+//	    lifting_mode = DANGER;
+//	    xTaskNotify(task_control, 0, eNoAction);
 	}
 
 	//******************************************************************************
@@ -537,8 +574,8 @@ void Task_Sensor(void *param) {
 	/*Error Handling*/
 	//If encoder is faulty, no data reception, suspend all task
 	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 500 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 500) {
-	    lifting_mode = DANGER;
-	    xTaskNotify(task_control, 0, eNoAction);
+//	    lifting_mode = DANGER;
+//	    xTaskNotify(task_control, 0, eNoAction);
 	}
 	//******************************************************************************
 	/*Common Sensor*/
@@ -546,8 +583,8 @@ void Task_Sensor(void *param) {
 	//Error Handling
 	//UART error cause by noise flag, framing, overrun error happens during multibuffer dma communication
 	if (xTaskGetTickCount() - last_tf_mini_t > 500) {
-	    lifting_mode = DANGER;
-	    xTaskNotify(task_control, 0, eNoAction);
+//	    lifting_mode = DANGER;
+//	    xTaskNotify(task_control, 0, eNoAction);
 	}
 
 	vTaskDelay(period);
