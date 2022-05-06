@@ -204,6 +204,7 @@ Debug_Tick_t encoder_tick_taken = {
 
 extern wheel_velocity_t base_velocity[2];
 
+MPU6050_t MPU6050;
 
 #ifdef DATA_LOGGING
 DataLogger_Msg_t datalog_msg;
@@ -520,6 +521,18 @@ void Task_Sensor(void *param) {
     //Flag to alternate the address of rs485 tx to avoid congestion
     uint8_t base_encoder_tx_flag = 0;
 
+    TickType_t debug = xTaskGetTickCount();
+    uint32_t state_count = xTaskGetTickCount();
+    while (MPU6050_Init(&hi2c1) != HAL_OK)
+    {
+	if (xTaskGetTickCount() - state_count > 50)
+		Error_Handler();
+    }
+    debug = xTaskGetTickCount() - debug;
+
+    debug = xTaskGetTickCount();
+    MPU6050_Calculate_Error(&hi2c1, &MPU6050);
+    debug = xTaskGetTickCount() - debug;
     //Ensure periodic execution
     const TickType_t period = pdMS_TO_TICKS(10);
     while (1) {
@@ -552,7 +565,7 @@ void Task_Sensor(void *param) {
 
 	/*Error Handling*/
 	//If encoder is faulty, no data reception, suspend all task
-	if ((xTaskGetTickCount() - last_can_rx_t[0]) > 500 || (xTaskGetTickCount() - last_can_rx_t[1]) > 500) {
+	if ((xTaskGetTickCount() - last_can_rx_t[0]) > 1000 || (xTaskGetTickCount() - last_can_rx_t[1]) > 1000) {
 	    lifting_mode = DANGER;
 	    xTaskNotify(task_control, 0, eNoAction);
 	}
@@ -586,6 +599,8 @@ void Task_Sensor(void *param) {
 	    lifting_mode = DANGER;
 	    xTaskNotify(task_control, 0, eNoAction);
 	}
+
+
 
 	vTaskDelay(period);
     }

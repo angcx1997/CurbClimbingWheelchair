@@ -35,6 +35,7 @@
 #include <math.h>
 #include "mpu6050.h"
 
+
 #define RAD_TO_DEG 57.295779513082320876798154814105
 
 #define WHO_AM_I_REG 0x75
@@ -48,8 +49,8 @@
 
 // Setup MPU6050
 #define MPU6050_ADDR 0xD0
-const uint16_t i2c_timeout = 100;
-const double Accel_Z_corrector = 14418.0;
+const uint16_t i2c_timeout = 5;
+const float Accel_Z_corrector = 14418.0;
 
 uint32_t timer;
 
@@ -65,36 +66,35 @@ Kalman_t KalmanY = {
         .R_measure = 0.03f,
 };
 
-uint8_t MPU6050_Init(I2C_HandleTypeDef *I2Cx) {
+HAL_StatusTypeDef MPU6050_Init(I2C_HandleTypeDef *I2Cx) {
     uint8_t check;
     uint8_t Data;
-
+    HAL_StatusTypeDef status;
     // check device ID WHO_AM_I
 
-    HAL_I2C_Mem_Read(I2Cx, MPU6050_ADDR, WHO_AM_I_REG, 1, &check, 1, i2c_timeout);
+    status = HAL_I2C_Mem_Read(I2Cx, MPU6050_ADDR, WHO_AM_I_REG, 1, &check, 1, i2c_timeout);
 
-    if (check == 104)  // 0x68 will be returned by the sensor if everything goes well
+    if (check == 0x68)  // 0x68 will be returned by the sensor if everything goes well
     {
         // power management register 0X6B we should write all 0's to wake the sensor up
         Data = 0;
-        HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, PWR_MGMT_1_REG, 1, &Data, 1, i2c_timeout);
+        status = HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, PWR_MGMT_1_REG, 1, &Data, 1, i2c_timeout);
 
         // Set DATA RATE of 1KHz by writing SMPLRT_DIV register
         Data = 0x07;
-        HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, SMPLRT_DIV_REG, 1, &Data, 1, i2c_timeout);
+        status = HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, SMPLRT_DIV_REG, 1, &Data, 1, i2c_timeout);
 
         // Set accelerometer configuration in ACCEL_CONFIG Register
         // XA_ST=0,YA_ST=0,ZA_ST=0, FS_SEL=0 -> � 2g
         Data = 0x00;
-        HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, ACCEL_CONFIG_REG, 1, &Data, 1, i2c_timeout);
+        status = HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, ACCEL_CONFIG_REG, 1, &Data, 1, i2c_timeout);
 
         // Set Gyroscopic configuration in GYRO_CONFIG Register
         // XG_ST=0,YG_ST=0,ZG_ST=0, FS_SEL=0 -> � 250 �/s
         Data = 0x00;
-        HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, GYRO_CONFIG_REG, 1, &Data, 1, i2c_timeout);
-        return 0;
+        status = HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, GYRO_CONFIG_REG, 1, &Data, 1, i2c_timeout);
     }
-    return 1;
+    return status;
 }
 
 
@@ -116,7 +116,7 @@ void MPU6050_Read_Accel(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct) {
 
     DataStruct->Ax = DataStruct->Accel_X_RAW / 16384.0;
     DataStruct->Ay = DataStruct->Accel_Y_RAW / 16384.0;
-    DataStruct->Az = DataStruct->Accel_Z_RAW / Accel_Z_corrector;
+    DataStruct->Az = DataStruct->Accel_Z_RAW / 16384.0;
 }
 
 
@@ -139,6 +139,40 @@ void MPU6050_Read_Gyro(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct) {
     DataStruct->Gx = DataStruct->Gyro_X_RAW / 131.0;
     DataStruct->Gy = DataStruct->Gyro_Y_RAW / 131.0;
     DataStruct->Gz = DataStruct->Gyro_Z_RAW / 131.0;
+}
+
+void MPU6050_Calculate_Error(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct){
+    // We can call this funtion in the setup section to calculate the accelerometer and gyro data error. From here we will get the error values used in the above equations printed on the Serial Monitor.
+    // Note that we should place the IMU flat in order to get the proper values, so that we then can the correct values
+    // Read accelerometer values 200 times
+    uint8_t MAX_COUNT = 200;
+    DataStruct->Error_Ax = 0;
+    DataStruct->Error_Ay = 0;
+    DataStruct->Error_Az = 0;
+    for(uint8_t i = 0; i < MAX_COUNT; i++){
+	MPU6050_Read_Accel(I2Cx, DataStruct);
+	// Sum all readings
+	DataStruct->Error_Ax = DataStruct->Error_Ax + DataStruct->Ax;
+	DataStruct->Error_Ay = DataStruct->Error_Ay + DataStruct->Ay;
+	DataStruct->Error_Az = DataStruct->Error_Az + DataStruct->Az;
+    }
+    DataStruct->Error_Ax /= MAX_COUNT;
+    DataStruct->Error_Ay /= MAX_COUNT;
+    DataStruct->Error_Az /= MAX_COUNT;
+
+    DataStruct->Error_Gx = 0;
+    DataStruct->Error_Gy = 0;
+    DataStruct->Error_Gz = 0;
+    for(uint8_t i = 0; i < MAX_COUNT; i++){
+	MPU6050_Read_Gyro(I2Cx, DataStruct);
+	// Sum all readings
+	DataStruct->Error_Gx = DataStruct->Error_Gx + DataStruct->Gx;
+	DataStruct->Error_Gy = DataStruct->Error_Gy + DataStruct->Gy;
+	DataStruct->Error_Gz = DataStruct->Error_Gz + DataStruct->Gz;
+    }
+    DataStruct->Error_Gx /= MAX_COUNT;
+    DataStruct->Error_Gy /= MAX_COUNT;
+    DataStruct->Error_Gz /= MAX_COUNT;
 }
 
 void MPU6050_Read_Temp(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct) {
@@ -178,17 +212,17 @@ void MPU6050_Read_All(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct) {
     DataStruct->Gz = DataStruct->Gyro_Z_RAW / 131.0;
 
     // Kalman angle solve
-    double dt = (double) (HAL_GetTick() - timer) / 1000;
+    float dt = (float) (HAL_GetTick() - timer) / 1000;
     timer = HAL_GetTick();
-    double roll;
-    double roll_sqrt = sqrt(
+    float roll;
+    float roll_sqrt = sqrt(
             DataStruct->Accel_X_RAW * DataStruct->Accel_X_RAW + DataStruct->Accel_Z_RAW * DataStruct->Accel_Z_RAW);
     if (roll_sqrt != 0.0) {
         roll = atan(DataStruct->Accel_Y_RAW / roll_sqrt) * RAD_TO_DEG;
     } else {
         roll = 0.0;
     }
-    double pitch = atan2(-DataStruct->Accel_X_RAW, DataStruct->Accel_Z_RAW) * RAD_TO_DEG;
+    float pitch = atan2(-DataStruct->Accel_X_RAW, DataStruct->Accel_Z_RAW) * RAD_TO_DEG;
     if ((pitch < -90 && DataStruct->KalmanAngleY > 90) || (pitch > 90 && DataStruct->KalmanAngleY < -90)) {
         KalmanY.angle = pitch;
         DataStruct->KalmanAngleY = pitch;
@@ -201,8 +235,8 @@ void MPU6050_Read_All(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct) {
 
 }
 
-double Kalman_getAngle(Kalman_t *Kalman, double newAngle, double newRate, double dt) {
-    double rate = newRate - Kalman->bias;
+float Kalman_getAngle(Kalman_t *Kalman, float newAngle, float newRate, float dt) {
+    float rate = newRate - Kalman->bias;
     Kalman->angle += dt * rate;
 
     Kalman->P[0][0] += dt * (dt * Kalman->P[1][1] - Kalman->P[0][1] - Kalman->P[1][0] + Kalman->Q_angle);
@@ -210,17 +244,17 @@ double Kalman_getAngle(Kalman_t *Kalman, double newAngle, double newRate, double
     Kalman->P[1][0] -= dt * Kalman->P[1][1];
     Kalman->P[1][1] += Kalman->Q_bias * dt;
 
-    double S = Kalman->P[0][0] + Kalman->R_measure;
-    double K[2];
+    float S = Kalman->P[0][0] + Kalman->R_measure;
+    float K[2];
     K[0] = Kalman->P[0][0] / S;
     K[1] = Kalman->P[1][0] / S;
 
-    double y = newAngle - Kalman->angle;
+    float y = newAngle - Kalman->angle;
     Kalman->angle += K[0] * y;
     Kalman->bias += K[1] * y;
 
-    double P00_temp = Kalman->P[0][0];
-    double P01_temp = Kalman->P[0][1];
+    float P00_temp = Kalman->P[0][0];
+    float P01_temp = Kalman->P[0][1];
 
     Kalman->P[0][0] -= K[0] * P00_temp;
     Kalman->P[0][1] -= K[0] * P01_temp;

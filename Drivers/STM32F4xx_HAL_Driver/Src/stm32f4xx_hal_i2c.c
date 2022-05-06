@@ -7195,6 +7195,7 @@ static void I2C_DMAAbort(DMA_HandleTypeDef *hdma)
 static HAL_StatusTypeDef I2C_WaitOnFlagUntilTimeout(I2C_HandleTypeDef *hi2c, uint32_t Flag, FlagStatus Status, uint32_t Timeout, uint32_t Tickstart)
 {
   /* Wait until flag is set */
+   uint8_t flag = __HAL_I2C_GET_FLAG(hi2c, Flag);
   while (__HAL_I2C_GET_FLAG(hi2c, Flag) == Status)
   {
     /* Check for the Timeout */
