@@ -71,3 +71,11 @@ void MPU6050_Read_All(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct);
 
 float Kalman_getAngle(Kalman_t *Kalman, float newAngle, float newRate, float dt);
 
+/**
+ * Used to reset mpu6050 with mcu connection
+ * Sometime, with multiple reset, mpu6050 sdl being stretch low.
+ * Therefore, reset the SDA and SCL line
+ * @param I2Cx i2c handler
+ * @return HAL_StatusTypeDef HAL_OK if mpu6050 able to work fine
+ */
+HAL_StatusTypeDef MPU6050_I2C_Reset(I2C_HandleTypeDef *I2Cx);

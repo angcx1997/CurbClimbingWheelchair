@@ -52,6 +52,7 @@
 #include "tfmini.h"
 #include "semphr.h"
 #include "encoder_util.h"
+#include "us_delay.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -91,6 +92,7 @@ SPI_HandleTypeDef hspi1;
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim7;
 TIM_HandleTypeDef htim8;
 
 UART_HandleTypeDef huart1;
@@ -148,6 +150,7 @@ void StartDefaultTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 void Buzzer_Timer_Callback(TimerHandle_t xTimer);
+void delay_us (uint16_t us);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -218,6 +221,7 @@ int main(void) {
     SystemClock_Config();
 
     /* USER CODE BEGIN SysInit */
+
     /* USER CODE END SysInit */
 
     /* Initialize all configured peripherals */
@@ -564,151 +568,6 @@ void Buzzer_Timer_Callback(TimerHandle_t xTimer) {
     HAL_GPIO_TogglePin(Buzzer_GPIO_Port, Buzzer_Pin);
 }
 
-void HAL_I2C_GPIO_Init(I2C_HandleTypeDef *hi2c, uint8_t state) {
-    if (hi2c->Instance == I2C1 && state == 0) {
-	GPIO_InitTypeDef GPIO_InitStruct = {
-		0
-	};
-	__HAL_RCC_GPIOB_CLK_ENABLE();
-	/**I2C1 GPIO Configuration
-	 PB8     ------> I2C1_SCL
-	 PB9     ------> I2C1_SDA
-	 */
-	HAL_GPIO_WritePin(GPIOB, IMU_I2C1_SCL_Pin | IMU_I2C1_SDA_Pin, GPIO_PIN_RESET);
-
-	GPIO_InitStruct.Pin = IMU_I2C1_SCL_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-	GPIO_InitStruct.Pull = GPIO_PULLUP;
-	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-	GPIO_InitStruct.Pin = IMU_I2C1_SDA_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-	GPIO_InitStruct.Pull = GPIO_PULLUP;
-	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-	/* Peripheral clock enable */
-	/* USER CODE BEGIN I2C1_MspInit 1 */
-
-	/* USER CODE END I2C1_MspInit 1 */
-    }
-    else if (hi2c->Instance == I2C1 && state == 1) {
-    	GPIO_InitTypeDef GPIO_InitStruct = {
-    		0
-    	};
-    	__HAL_RCC_GPIOB_CLK_ENABLE();
-    	/**I2C1 GPIO Configuration
-    	 PB8     ------> I2C1_SCL
-    	 PB9     ------> I2C1_SDA
-    	 */
-    	HAL_GPIO_WritePin(GPIOB, IMU_I2C1_SCL_Pin | IMU_I2C1_SDA_Pin, GPIO_PIN_RESET);
-
-    	GPIO_InitStruct.Pin = IMU_I2C1_SCL_Pin;
-    	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-    	GPIO_InitStruct.Pull = GPIO_PULLUP;
-    	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-    	GPIO_InitStruct.Pin = IMU_I2C1_SDA_Pin;
-    	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-    	GPIO_InitStruct.Pull = GPIO_PULLUP;
-    	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-    	/* Peripheral clock enable */
-    	/* USER CODE BEGIN I2C1_MspInit 1 */
-
-    	/* USER CODE END I2C1_MspInit 1 */
-        }
-    else if (hi2c->Instance == I2C1 && state == 2) {
-       	GPIO_InitTypeDef GPIO_InitStruct = {
-       		0
-       	};
-       	__HAL_RCC_GPIOB_CLK_ENABLE();
-       	/**I2C1 GPIO Configuration
-       	 PB8     ------> I2C1_SCL
-       	 PB9     ------> I2C1_SDA
-       	 */
-       	HAL_GPIO_WritePin(GPIOB, IMU_I2C1_SCL_Pin | IMU_I2C1_SDA_Pin, GPIO_PIN_RESET);
-
-       	GPIO_InitStruct.Pin = IMU_I2C1_SCL_Pin;
-       	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-       	GPIO_InitStruct.Pull = GPIO_PULLUP;
-       	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-       	GPIO_InitStruct.Pin = IMU_I2C1_SDA_Pin;
-       	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-       	GPIO_InitStruct.Pull = GPIO_PULLUP;
-       	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-       	/* Peripheral clock enable */
-       	/* USER CODE BEGIN I2C1_MspInit 1 */
-
-       	/* USER CODE END I2C1_MspInit 1 */
-           }
-}
-
-HAL_StatusTypeDef MPU6050_I2C_Reset()
-{
-    uint8_t SDA_state;
-    uint8_t SCL_state;
-
-    //STOP I2C peripheral
-    HAL_I2C_MspDeInit(&hi2c1);
-
-    //Initialize both as input with pullup to check I2C state
-    HAL_I2C_GPIO_Init(&hi2c1, 0);
-
-    SCL_state = HAL_GPIO_ReadPin(IMU_I2C1_SCL_GPIO_Port, IMU_I2C1_SCL_Pin);
-    //If SCL is off during idle, hardware reset is a must
-    if (SCL_state == GPIO_PIN_RESET)
-	return HAL_ERROR;
-
-    uint8_t clockCount = 20; // > 2x9 clock
-    SDA_state = HAL_GPIO_ReadPin(IMU_I2C1_SDA_GPIO_Port, IMU_I2C1_SDA_Pin);
-    while(SDA_state == GPIO_PIN_RESET && (clockCount > 0)){
-	clockCount--;
-	//Initialize SCL as output port to spam clock pulse
-	HAL_I2C_GPIO_Init(&hi2c1, 1);
-	HAL_GPIO_WritePin(IMU_I2C1_SCL_GPIO_Port, IMU_I2C1_SCL_Pin, GPIO_PIN_RESET);
-	HAL_Delay(1);
-	HAL_GPIO_WritePin(IMU_I2C1_SCL_GPIO_Port, IMU_I2C1_SCL_Pin, GPIO_PIN_SET);
-	HAL_Delay(1);
-
-
-	//Initialize both as input with pullup to check I2C state
-	HAL_I2C_GPIO_Init(&hi2c1, 0);
-	SDA_state = HAL_GPIO_ReadPin(IMU_I2C1_SDA_GPIO_Port, IMU_I2C1_SDA_Pin);
-	SCL_state = HAL_GPIO_ReadPin(IMU_I2C1_SCL_GPIO_Port, IMU_I2C1_SCL_Pin);
-
-	if (SCL_state == GPIO_PIN_RESET)
-	    return HAL_ERROR;
-	if (SDA_state == GPIO_PIN_SET)
-	    return HAL_OK;
-    }
-    if (SDA_state == GPIO_PIN_RESET){
-	//Simulate repeated start and stop condition
-	HAL_I2C_GPIO_Init(&hi2c1, 2);
-	HAL_GPIO_WritePin(IMU_I2C1_SDA_GPIO_Port, IMU_I2C1_SDA_Pin, GPIO_PIN_SET);
-	HAL_Delay(1);
-
-	HAL_GPIO_WritePin(IMU_I2C1_SDA_GPIO_Port, IMU_I2C1_SDA_Pin, GPIO_PIN_RESET);
-	HAL_Delay(1);
-
-	HAL_GPIO_WritePin(IMU_I2C1_SDA_GPIO_Port, IMU_I2C1_SDA_Pin, GPIO_PIN_SET);
-	HAL_Delay(1);
-
-
-	//Initialize both as input with pullup to check I2C state
-	HAL_I2C_GPIO_Init(&hi2c1, 0);
-	SDA_state = HAL_GPIO_ReadPin(IMU_I2C1_SDA_GPIO_Port, IMU_I2C1_SDA_Pin);
-	SCL_state = HAL_GPIO_ReadPin(IMU_I2C1_SCL_GPIO_Port, IMU_I2C1_SCL_Pin);
-
-	if (SCL_state == GPIO_PIN_RESET)
-	    return HAL_ERROR;
-	if (SDA_state == GPIO_PIN_SET)
-	    return HAL_OK;
-    }
-    HAL_I2C_MspInit(&hi2c1);
-    return HAL_OK;
-}
 
 /* USER CODE END 4 */
 
@@ -722,23 +581,16 @@ HAL_StatusTypeDef MPU6050_I2C_Reset()
 void StartDefaultTask(void *argument) {
     /* init code for USB_DEVICE */
     MX_USB_DEVICE_Init();
-
+    //Use to start microsecond delay
+    delay_us_init(&htim7);
     /* USER CODE BEGIN 5 */
-//    TickType_t debug = xTaskGetTickCount();
     uint32_t state_count = xTaskGetTickCount();
     while (MPU6050_Init(&hi2c1) != 0)
     {
-	if (xTaskGetTickCount() - state_count > 50){
-	    MPU6050_I2C_Reset();
-
+	if (xTaskGetTickCount() - state_count > 10){
+	    MPU6050_I2C_Reset(&hi2c1);
 	}
-//	osDelay(10);
     }
-//    debug = xTaskGetTickCount() - debug;
-
-//    debug = xTaskGetTickCount();
-//    MPU6050_Calculate_Error(&hi2c1, &MPU6050);
-//    debug = xTaskGetTickCount() - debug;
 
     /* Infinite loop */
     for (;;) {

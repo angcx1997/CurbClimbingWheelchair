@@ -34,6 +34,8 @@
 
 #include <math.h>
 #include "mpu6050.h"
+#include "main.h"
+#include "us_delay.h"
 
 
 #define RAD_TO_DEG 57.295779513082320876798154814105
@@ -52,6 +54,13 @@
 const uint16_t i2c_timeout = 5;
 const float Accel_Z_corrector = 14418.0;
 
+/**
+ * Used to convert the i2c peripheral back to GPIO to allow bit-banging
+ * @param hi2c pointer to i2c handler
+ * @param state configuration of GPIO pin as input or output
+ */
+static void HAL_I2C_GPIO_Init(I2C_HandleTypeDef *hi2c, uint8_t state);
+
 uint32_t timer;
 
 Kalman_t KalmanX = {
@@ -66,12 +75,15 @@ Kalman_t KalmanY = {
         .R_measure = 0.03f,
 };
 
+I2C_HandleTypeDef* local_I2C;
+
 HAL_StatusTypeDef MPU6050_Init(I2C_HandleTypeDef *I2Cx) {
     uint8_t check;
     uint8_t Data;
     HAL_StatusTypeDef status;
     // check device ID WHO_AM_I
 
+    local_I2C = I2Cx;
     status = HAL_I2C_Mem_Read(I2Cx, MPU6050_ADDR, WHO_AM_I_REG, 1, &check, 1, i2c_timeout);
 
     if (check == 0x68)  // 0x68 will be returned by the sensor if everything goes well
@@ -264,3 +276,148 @@ float Kalman_getAngle(Kalman_t *Kalman, float newAngle, float newRate, float dt)
     return Kalman->angle;
 };
 
+HAL_StatusTypeDef MPU6050_I2C_Reset(I2C_HandleTypeDef *I2Cx)
+{
+    uint8_t SDA_state;
+    uint8_t SCL_state;
+
+    //STOP I2C peripheral
+    HAL_I2C_MspDeInit(I2Cx);
+
+    //Initialize both as input with pullup to check I2C state
+    HAL_I2C_GPIO_Init(I2Cx, 0);
+
+    SCL_state = HAL_GPIO_ReadPin(IMU_I2C1_SCL_GPIO_Port, IMU_I2C1_SCL_Pin);
+    //If SCL is off during idle, hardware reset is a must
+    if (SCL_state == GPIO_PIN_RESET)
+	return HAL_ERROR;
+
+    uint8_t clockCount = 20; // > 2x9 clock
+    SDA_state = HAL_GPIO_ReadPin(IMU_I2C1_SDA_GPIO_Port, IMU_I2C1_SDA_Pin);
+    while(SDA_state == GPIO_PIN_RESET && (clockCount > 0)){
+	clockCount--;
+	//Initialize SCL as output port to spam clock pulse
+	HAL_I2C_GPIO_Init(I2Cx, 1);
+	HAL_GPIO_WritePin(IMU_I2C1_SCL_GPIO_Port, IMU_I2C1_SCL_Pin, GPIO_PIN_RESET);
+	delay_us(10);
+	HAL_GPIO_WritePin(IMU_I2C1_SCL_GPIO_Port, IMU_I2C1_SCL_Pin, GPIO_PIN_SET);
+	delay_us(10);
+
+
+	//Initialize both as input with pullup to check I2C state
+	HAL_I2C_GPIO_Init(I2Cx, 0);
+	SDA_state = HAL_GPIO_ReadPin(IMU_I2C1_SDA_GPIO_Port, IMU_I2C1_SDA_Pin);
+	SCL_state = HAL_GPIO_ReadPin(IMU_I2C1_SCL_GPIO_Port, IMU_I2C1_SCL_Pin);
+
+	if (SCL_state == GPIO_PIN_RESET)
+	    return HAL_ERROR;
+	if (SDA_state == GPIO_PIN_SET)
+	    return HAL_OK;
+    }
+    if (SDA_state == GPIO_PIN_RESET){
+	//Simulate repeated start and stop condition
+	HAL_I2C_GPIO_Init(I2Cx, 2);
+	HAL_GPIO_WritePin(IMU_I2C1_SDA_GPIO_Port, IMU_I2C1_SDA_Pin, GPIO_PIN_SET);
+	delay_us(10);
+
+	HAL_GPIO_WritePin(IMU_I2C1_SDA_GPIO_Port, IMU_I2C1_SDA_Pin, GPIO_PIN_RESET);
+	delay_us(10);
+
+	HAL_GPIO_WritePin(IMU_I2C1_SDA_GPIO_Port, IMU_I2C1_SDA_Pin, GPIO_PIN_SET);
+	delay_us(10);
+
+
+	//Initialize both as input with pullup to check I2C state
+	HAL_I2C_GPIO_Init(I2Cx, 0);
+	SDA_state = HAL_GPIO_ReadPin(IMU_I2C1_SDA_GPIO_Port, IMU_I2C1_SDA_Pin);
+	SCL_state = HAL_GPIO_ReadPin(IMU_I2C1_SCL_GPIO_Port, IMU_I2C1_SCL_Pin);
+
+	if (SCL_state == GPIO_PIN_RESET)
+	    return HAL_ERROR;
+	if (SDA_state == GPIO_PIN_SET)
+	    return HAL_OK;
+    }
+    HAL_I2C_MspInit(I2Cx);
+    return HAL_OK;
+}
+
+void HAL_I2C_GPIO_Init(I2C_HandleTypeDef *hi2c, uint8_t state) {
+    if (hi2c->Instance == I2C1 && state == 0) {
+	GPIO_InitTypeDef GPIO_InitStruct = {
+		0
+	};
+	__HAL_RCC_GPIOB_CLK_ENABLE();
+	/**I2C1 GPIO Configuration
+	 PB8     ------> I2C1_SCL
+	 PB9     ------> I2C1_SDA
+	 */
+	HAL_GPIO_WritePin(GPIOB, IMU_I2C1_SCL_Pin | IMU_I2C1_SDA_Pin, GPIO_PIN_RESET);
+
+	GPIO_InitStruct.Pin = IMU_I2C1_SCL_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStruct.Pull = GPIO_PULLUP;
+	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+	GPIO_InitStruct.Pin = IMU_I2C1_SDA_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStruct.Pull = GPIO_PULLUP;
+	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+	/* Peripheral clock enable */
+	/* USER CODE BEGIN I2C1_MspInit 1 */
+
+	/* USER CODE END I2C1_MspInit 1 */
+    }
+    else if (hi2c->Instance == I2C1 && state == 1) {
+    	GPIO_InitTypeDef GPIO_InitStruct = {
+    		0
+    	};
+    	__HAL_RCC_GPIOB_CLK_ENABLE();
+    	/**I2C1 GPIO Configuration
+    	 PB8     ------> I2C1_SCL
+    	 PB9     ------> I2C1_SDA
+    	 */
+    	HAL_GPIO_WritePin(GPIOB, IMU_I2C1_SCL_Pin | IMU_I2C1_SDA_Pin, GPIO_PIN_RESET);
+
+    	GPIO_InitStruct.Pin = IMU_I2C1_SCL_Pin;
+    	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+    	GPIO_InitStruct.Pull = GPIO_PULLUP;
+    	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    	GPIO_InitStruct.Pin = IMU_I2C1_SDA_Pin;
+    	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    	GPIO_InitStruct.Pull = GPIO_PULLUP;
+    	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    	/* Peripheral clock enable */
+    	/* USER CODE BEGIN I2C1_MspInit 1 */
+
+    	/* USER CODE END I2C1_MspInit 1 */
+        }
+    else if (hi2c->Instance == I2C1 && state == 2) {
+       	GPIO_InitTypeDef GPIO_InitStruct = {
+       		0
+       	};
+       	__HAL_RCC_GPIOB_CLK_ENABLE();
+       	/**I2C1 GPIO Configuration
+       	 PB8     ------> I2C1_SCL
+       	 PB9     ------> I2C1_SDA
+       	 */
+       	HAL_GPIO_WritePin(GPIOB, IMU_I2C1_SCL_Pin | IMU_I2C1_SDA_Pin, GPIO_PIN_RESET);
+
+       	GPIO_InitStruct.Pin = IMU_I2C1_SCL_Pin;
+       	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+       	GPIO_InitStruct.Pull = GPIO_PULLUP;
+       	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+       	GPIO_InitStruct.Pin = IMU_I2C1_SDA_Pin;
+       	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+       	GPIO_InitStruct.Pull = GPIO_PULLUP;
+       	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+       	/* Peripheral clock enable */
+       	/* USER CODE BEGIN I2C1_MspInit 1 */
+
+       	/* USER CODE END I2C1_MspInit 1 */
+           }
+}
