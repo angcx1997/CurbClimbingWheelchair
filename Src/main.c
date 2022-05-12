@@ -228,6 +228,7 @@ int main(void) {
     /* USER CODE BEGIN 2 */
     Peripheral_Init();
 
+    delay_us_init(&htim7);
     //Initialize front and back climbing position controller
     frontClimb_pid = pid_create(&frontClimb_ctrl, &frontClimb_input, &frontClimb_output, &frontClimb_setpoint,
 	    frontClimb_kp, frontClimb_ki, frontClimb_kd);
@@ -276,22 +277,22 @@ int main(void) {
 
     /* USER CODE BEGIN RTOS_THREADS */
     /* add threads, ... */
-//    status = xTaskCreate(Task_Control, "Control Task", 250, NULL, 2, &task_control);
-//    configASSERT(status == pdPASS);
-//    status = xTaskCreate(Task_Keyboard, "Keyboard Task", 250, NULL, 2, &task_keyboard);
-//    configASSERT(status == pdPASS);
-//    status = xTaskCreate(Task_Climbing, "Climbing Task", 250, NULL, 2, &task_climbing);
-//    configASSERT(status == pdPASS);
-//    status = xTaskCreate(Task_Joystick, "Joystick Task", 250, NULL, 2, &task_joystick);
-//    configASSERT(status == pdPASS);
-//    status = xTaskCreate(Task_Sensor, "Sensor Task", 400, NULL, 2, &task_sensor);
-//    configASSERT(status == pdPASS);
-//    status = xTaskCreate(Task_NormalDrive, "Normal Drive Task", 250, NULL, 2, &task_normalDrive);
-//    configASSERT(status == pdPASS);
-//    status = xTaskCreate(Task_USB, "USB Task", 250, NULL, 2, &task_usb);
-//    configASSERT(status == pdPASS);
-//    status = xTaskCreate(Task_Battery, "Battery Task", 250, NULL, 2, &task_battery);
-//    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Control, "Control Task", 250, NULL, 2, &task_control);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Keyboard, "Keyboard Task", 250, NULL, 2, &task_keyboard);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Climbing, "Climbing Task", 250, NULL, 2, &task_climbing);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Joystick, "Joystick Task", 250, NULL, 2, &task_joystick);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Sensor, "Sensor Task", 400, NULL, 2, &task_sensor);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_NormalDrive, "Normal Drive Task", 250, NULL, 2, &task_normalDrive);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_USB, "USB Task", 250, NULL, 2, &task_usb);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Battery, "Battery Task", 250, NULL, 2, &task_battery);
+    configASSERT(status == pdPASS);
     /* USER CODE END RTOS_THREADS */
 
     /* USER CODE BEGIN RTOS_EVENTS */
@@ -552,6 +553,10 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
 	}
 	return;
     }
+    if (huart->Instance == UART4) {
+	__NOP();
+    	return;
+    }
 
 }
 
@@ -582,19 +587,19 @@ void StartDefaultTask(void *argument) {
     /* init code for USB_DEVICE */
     MX_USB_DEVICE_Init();
     //Use to start microsecond delay
-    delay_us_init(&htim7);
+
     /* USER CODE BEGIN 5 */
-    uint32_t state_count = xTaskGetTickCount();
-    while (MPU6050_Init(&hi2c1) != 0)
-    {
-	if (xTaskGetTickCount() - state_count > 10){
-	    MPU6050_I2C_Reset(&hi2c1);
-	}
-    }
+//    uint32_t state_count = xTaskGetTickCount();
+//    while (MPU6050_Init(&hi2c1) != 0)
+//    {
+//	if (xTaskGetTickCount() - state_count > 10){
+//	    MPU6050_I2C_Reset(&hi2c1);
+//	}
+//    }
 
     /* Infinite loop */
     for (;;) {
-	MPU6050_Read_All(&hi2c1, &MPU6050);
+//	MPU6050_Read_All(&hi2c1, &MPU6050);
 	osDelay(1);
     }
     /* USER CODE END 5 */

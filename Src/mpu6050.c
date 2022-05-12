@@ -51,7 +51,7 @@
 
 // Setup MPU6050
 #define MPU6050_ADDR 0xD0
-const uint16_t i2c_timeout = 5;
+const uint16_t i2c_timeout = 1;
 const float Accel_Z_corrector = 14418.0;
 
 /**
@@ -199,13 +199,15 @@ void MPU6050_Read_Temp(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct) {
     DataStruct->Temperature = (float) ((int16_t) temp / (float) 340.0 + (float) 36.53);
 }
 
-void MPU6050_Read_All(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct) {
+HAL_StatusTypeDef MPU6050_Read_All(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct) {
     uint8_t Rec_Data[14];
     int16_t temp;
+    static uint32_t prev_t = 0;
 
     // Read 14 BYTES of data starting from ACCEL_XOUT_H register
-
-    HAL_I2C_Mem_Read(I2Cx, MPU6050_ADDR, ACCEL_XOUT_H_REG, 1, Rec_Data, 14, i2c_timeout);
+    HAL_StatusTypeDef status = HAL_I2C_Mem_Read(I2Cx, MPU6050_ADDR, ACCEL_XOUT_H_REG, 1, Rec_Data, 14, i2c_timeout);
+    if(status != HAL_OK)
+	return status;
 
     DataStruct->Accel_X_RAW = (int16_t) (Rec_Data[0] << 8 | Rec_Data[1]);
     DataStruct->Accel_Y_RAW = (int16_t) (Rec_Data[2] << 8 | Rec_Data[3]);
@@ -224,8 +226,8 @@ void MPU6050_Read_All(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct) {
     DataStruct->Gz = DataStruct->Gyro_Z_RAW / 131.0;
 
     // Kalman angle solve
-    float dt = (float) (HAL_GetTick() - timer) / 1000;
-    timer = HAL_GetTick();
+    float dt = (float) (HAL_GetTick() - prev_t) / 1000;
+    prev_t = HAL_GetTick();
     float roll;
     float roll_sqrt = sqrt(
             DataStruct->Accel_X_RAW * DataStruct->Accel_X_RAW + DataStruct->Accel_Z_RAW * DataStruct->Accel_Z_RAW);
@@ -245,6 +247,7 @@ void MPU6050_Read_All(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct) {
         DataStruct->Gx = -DataStruct->Gx;
     DataStruct->KalmanAngleX = Kalman_getAngle(&KalmanX, roll, DataStruct->Gy, dt);
 
+    return HAL_OK;
 }
 
 float Kalman_getAngle(Kalman_t *Kalman, float newAngle, float newRate, float dt) {

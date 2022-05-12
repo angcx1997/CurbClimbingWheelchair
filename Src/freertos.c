@@ -521,18 +521,22 @@ void Task_Sensor(void *param) {
     //Flag to alternate the address of rs485 tx to avoid congestion
     uint8_t base_encoder_tx_flag = 0;
 
-    TickType_t debug = xTaskGetTickCount();
+    uint32_t mpu_error_count = 0;
     uint32_t state_count = xTaskGetTickCount();
+
     while (MPU6050_Init(&hi2c1) != HAL_OK)
     {
 	if (xTaskGetTickCount() - state_count > 50)
+	    if(MPU6050_I2C_Reset(&hi2c1) == HAL_ERROR){
 		Error_Handler();
+	    }
     }
-    debug = xTaskGetTickCount() - debug;
 
-    debug = xTaskGetTickCount();
-    MPU6050_Calculate_Error(&hi2c1, &MPU6050);
-    debug = xTaskGetTickCount() - debug;
+//    MPU6050_Calculate_Error(&hi2c1, &MPU6050);
+
+    //Only start all operation after sensor are turned on.
+    xTaskNotify( task_climbing, 0, eNoAction );
+
     //Ensure periodic execution
     const TickType_t period = pdMS_TO_TICKS(10);
     while (1) {
@@ -540,6 +544,7 @@ void Task_Sensor(void *param) {
 	/*Climbing Sensor Data Acquisition and Processing*/
 	/*Data Acquisition*/
 	//Read encoder data
+
 	ENCODER_Get_Angle(&encoderBack);
 	ENCODER_Get_Angle(&encoderFront);
 
@@ -573,20 +578,23 @@ void Task_Sensor(void *param) {
 	//******************************************************************************
 	/*Navigation sensor data acquisition*/
 	/*Data Acquisition*/
+	//Disable interrupt
+	HAL_StatusTypeDef briter_dma_status;
 	if (base_encoder_tx_flag % 2 == 0) {
-	    BRITER_RS485_GetValue_DMA_TX(&base_encoder[0]);
+	    briter_dma_status = BRITER_RS485_GetValue_DMA_TX(&base_encoder[0]);
 	    base_encoder_tx_flag ++;
 	}else
 	{
 	    BRITER_RS485_GetValue_DMA_TX(&base_encoder[1]);
 	    base_encoder_tx_flag --;
 	}
-
-	BRITER_RS485_GetValue_DMA_RX(base_encoder);
+	if (briter_dma_status == HAL_OK)
+	       BRITER_RS485_GetValue_DMA_RX(base_encoder);
+	vTaskDelay(1);
 
 	/*Error Handling*/
 	//If encoder is faulty, no data reception, suspend all task
-	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 500 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 500) {
+	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 1000 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 1000) {
 	    lifting_mode = DANGER;
 	    xTaskNotify(task_control, 0, eNoAction);
 	}
@@ -600,7 +608,13 @@ void Task_Sensor(void *param) {
 	    xTaskNotify(task_control, 0, eNoAction);
 	}
 
+	//Sensor acquisition of IMU
+	mpu_error_count = (MPU6050_Read_All(&hi2c1, &MPU6050) == HAL_OK)? 0: ++mpu_error_count;
 
+	if(mpu_error_count > 20){
+	    lifting_mode = DANGER;
+	    xTaskNotify(task_control, 0, eNoAction);;
+	}
 
 	vTaskDelay(period);
     }
@@ -678,8 +692,8 @@ void Task_Climbing(void *param) {
     runMotor(&backMotor, 0);
     emBrakeMotor(0);
 
+    xTaskNotifyWait(0x00, ULONG_MAX, (uint32_t*)0, portMAX_DELAY);
     while (1) {
-
 #ifdef BUTTON_CONTROL
 	/*Button Control*/
 	if (button_state.button1 == 1 && button_state.button3 == 0)
