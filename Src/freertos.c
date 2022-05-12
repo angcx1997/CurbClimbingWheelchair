@@ -590,6 +590,8 @@ void Task_Sensor(void *param) {
 	}
 	if (briter_dma_status == HAL_OK)
 	       BRITER_RS485_GetValue_DMA_RX(base_encoder);
+	//This delay is important for the task to behave properly
+	//Issue not yet found
 	vTaskDelay(1);
 
 	/*Error Handling*/
