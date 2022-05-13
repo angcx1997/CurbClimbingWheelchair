@@ -49,6 +49,7 @@
 #include "tfmini.h"
 #include "usb_device.h"
 #include "encoder_util.h"
+#include "usbd_cdc_if.h"
 #include "../script/DataLogger.h"
 /* USER CODE END Includes */
 
@@ -75,7 +76,7 @@ typedef struct {
     #define ULONG_MAX 0xFFFFFFFF
 #endif
 //#define DEBUGGING
-//#define DATA_LOGGING
+#define DATA_LOGGING
 #ifndef MAX
     #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #endif
@@ -322,7 +323,6 @@ void Task_NormalDrive(void *param) {
 
 #ifdef DATA_LOGGING
     DataLogger_Init(&datalog_msg);
-    uint32_t tick_count = 0;
 #endif
     while (1) {
 	if (lifting_mode == NORMAL) {

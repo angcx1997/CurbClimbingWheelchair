@@ -586,8 +586,6 @@ void Buzzer_Timer_Callback(TimerHandle_t xTimer) {
 void StartDefaultTask(void *argument) {
     /* init code for USB_DEVICE */
     MX_USB_DEVICE_Init();
-    //Use to start microsecond delay
-
     /* USER CODE BEGIN 5 */
 //    uint32_t state_count = xTaskGetTickCount();
 //    while (MPU6050_Init(&hi2c1) != 0)
