@@ -228,6 +228,7 @@ int main(void) {
     /* USER CODE BEGIN 2 */
     Peripheral_Init();
 
+
     delay_us_init(&htim7);
     //Initialize front and back climbing position controller
     frontClimb_pid = pid_create(&frontClimb_ctrl, &frontClimb_input, &frontClimb_output, &frontClimb_setpoint,
@@ -526,7 +527,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 	last_tf_mini_t = xTaskGetTickCountFromISR();
 
-	HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
+//	HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
 	/* Now the buffer is empty we can switch context if necessary. */
 	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 	return;
@@ -549,7 +550,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
 	    __HAL_UART_CLEAR_OREFLAG(huart);
 	    __HAL_UART_CLEAR_FEFLAG(huart);
 	    __HAL_UART_CLEAR_NEFLAG(huart);
-	    HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
+//	    HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
 	}
 	return;
     }

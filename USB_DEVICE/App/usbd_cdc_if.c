@@ -50,7 +50,7 @@ extern uint8_t cmd;
   */
 
 /* USER CODE BEGIN PRIVATE_TYPES */
-extern uint8_t usbBuffer[1];
+extern uint8_t usbBuffer[64];
 /* USER CODE END PRIVATE_TYPES */
 
 /**
@@ -264,12 +264,12 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
   /* USER CODE BEGIN 6 */
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
   USBD_CDC_ReceivePacket(&hUsbDeviceFS);
-	
-	memset(usbBuffer, '\0', 1);
-	uint8_t len = (uint8_t) *Len;
-	memcpy(usbBuffer, Buf, len);
-	memset(Buf, '\0', len);
-	
+
+  memset (usbBuffer, '\0', 64);  // clear the buffer
+  uint8_t len = (uint8_t)*Len;
+  memcpy(usbBuffer, Buf, len);  // copy the data to the buffer
+  memset(Buf, '\0', len);   // clear the Buf also
+
   return (USBD_OK);
   /* USER CODE END 6 */
 }
@@ -291,12 +291,13 @@ uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len)
   /* USER CODE BEGIN 7 */
   USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData;
   if (hcdc->TxState != 0){
-    return USBD_BUSY;
+  return USBD_BUSY;
   }
   USBD_CDC_SetTxBuffer(&hUsbDeviceFS, Buf, Len);
   result = USBD_CDC_TransmitPacket(&hUsbDeviceFS);
-  /* USER CODE END 7 */
   return result;
+  /* USER CODE END 7 */
+
 }
 
 /**

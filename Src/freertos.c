@@ -76,7 +76,7 @@ typedef struct {
     #define ULONG_MAX 0xFFFFFFFF
 #endif
 //#define DEBUGGING
-#define DATA_LOGGING
+//#define DATA_LOGGING
 #ifndef MAX
     #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #endif
@@ -191,7 +191,6 @@ extern TickType_t last_rs485_enc_t[2];
 extern TickType_t last_tf_mini_t;
 
 extern uint8_t tf_rx_buf[TFMINI_RX_SIZE];
-extern uint8_t usbBuffer[1];
 uint32_t back_encoder_input = 0;
 uint8_t finish_climbing_flag = 0; //1 if climbing motion finish
 
@@ -208,8 +207,21 @@ extern wheel_velocity_t base_velocity[2];
 MPU6050_t MPU6050;
 
 #ifdef DATA_LOGGING
-DataLogger_Msg_t datalog_msg;
+    //Declare variable
+    volatile uint16_byte_u LOG_battery;
+    volatile float_byte_u LOG_left_pwm;
+    volatile float_byte_u LOG_right_pwm;
+    volatile uint32_byte_u LOG_left_enc;
+    volatile uint32_byte_u LOG_right_enc;
+    volatile float_byte_u LOG_left_enc_vel;
+    volatile float_byte_u LOG_right_enc_vel;
+    volatile uint32_byte_u LOG_tick;
+    volatile uint32_t tick_count = 0;
+    DataLogger_Msg_t datalog_msg;
+    uint8_t usbBuffer[64];
+    float v = 0.75;
 #endif
+
 
 /* USER CODE END Variables */
 
@@ -320,10 +332,6 @@ void Task_NormalDrive(void *param) {
     //Battery level
     uint16_t voltage_level = 25;
 
-
-#ifdef DATA_LOGGING
-    DataLogger_Init(&datalog_msg);
-#endif
     while (1) {
 	if (lifting_mode == NORMAL) {
 	    /*Data Processing*/
@@ -391,71 +399,38 @@ void Task_NormalDrive(void *param) {
 //	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
 //	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 	//TODO: Add PID controller here
-#ifdef DATA_LOGGING
+#ifdef DATA_XXXLOGGING
 	/*============================================================================*/
-	/*Input sine wave*/
-//	uint16_t sampling_rate = 750;
-//	//generate sine wave
+	/*Input wave*/
+	uint16_t sampling_rate = 750;
+	tick_count++;
+	//generate sine wave
 //	float v = 0.75 * sin(2 * M_PI * tick_count/sampling_rate);
-//	tick_count++;
-//
-//	int motor_output_1 = v * SABERTOOTH_MAX_ALLOWABLE_VALUE;
-//	int motor_output_2 = v * SABERTOOTH_MAX_ALLOWABLE_VALUE;
-//	MotorThrottle(&sabertooth_handler, TARGET_2, motor_output_1);
-//	MotorThrottle(&sabertooth_handler, TARGET_1, motor_output_2);
-//
-//	LOG_battery = voltage_level;
-//	LOG_left_vel = motor_output_1;
-//	LOG_right_vel = motor_output_2;
+	//Fourier wave
+//	v = 0.4* (sin(2 * M_PI * 0.1 * tick_count/sampling_rate) + sin(2 * M_PI * 0.2 * tick_count/sampling_rate)
+//		    + sin(2 * M_PI * 0.4 * tick_count/sampling_rate) + sin(2 * M_PI * tick_count/sampling_rate));
+	//Square wave
+//	if (tick_count % 750 == 0)
+//	    v = -v;
+
+	int motor_output_1 = v * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+	int motor_output_2 = v * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+	MotorThrottle(&sabertooth_handler, TARGET_2, motor_output_1);
+	MotorThrottle(&sabertooth_handler, TARGET_1, motor_output_2);
 	/*============================================================================*/
 	/*Joystick input*/
-    	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
-    	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
-
-    	//Declare variable
-    	uint16_byte_u LOG_battery;
-    	float_byte_u LOG_left_pwm;
-    	float_byte_u LOG_right_pwm;
-    	uint32_byte_u LOG_left_enc;
-    	uint32_byte_u LOG_right_enc;
-    	float_byte_u LOG_left_enc_vel;
-    	float_byte_u LOG_right_enc_vel;
-    	uint32_byte_u LOG_tick;
+//    	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
+//    	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 
     	//Define variable
-//    	LOG_battery.data = voltage_level;
-//    	LOG_left_pwm.data = differential_drive_handler.m_leftMotor;
-//    	LOG_right_pwm.data = differential_drive_handler.m_rightMotor;
-//    	LOG_left_enc.data = base_encoder[LEFT_INDEX].encoder_value;
-//    	LOG_right_enc.data = base_encoder[RIGHT_INDEX].encoder_value;
-//    	LOG_left_enc_vel.data = base_velocity[LEFT_INDEX].angular_velocity;
-//    	LOG_right_enc_vel.data = base_velocity[RIGHT_INDEX].angular_velocity;
-    	LOG_battery.data = 0xABCD;
-	LOG_left_pwm.data = 0.54321;
-	LOG_right_pwm.data = 0.56789;
-	LOG_left_enc.data = 0x12345670;
-	LOG_right_enc.data = 0x89ABCDEF;
-	LOG_left_enc_vel.data = 0.12345;
-	LOG_right_enc_vel.data = 0.67890;
-    	LOG_tick.data = xTaskGetTickCount();
-
-    	DataLogger_AddMessage(&datalog_msg, LOG_battery.array, sizeof(LOG_battery.array));
-    	DataLogger_AddMessage(&datalog_msg, LOG_left_pwm.array, sizeof(LOG_left_pwm.array));
-    	DataLogger_AddMessage(&datalog_msg, LOG_right_pwm.array, sizeof(LOG_right_pwm.array));
-    	DataLogger_AddMessage(&datalog_msg, LOG_left_enc.array, sizeof(LOG_left_enc.array));
-    	DataLogger_AddMessage(&datalog_msg, LOG_right_enc.array, sizeof(LOG_right_enc.array));
-	DataLogger_AddMessage(&datalog_msg, LOG_left_enc_vel.array, sizeof(LOG_left_enc_vel.array));
-	DataLogger_AddMessage(&datalog_msg, LOG_right_enc_vel.array, sizeof(LOG_right_enc_vel.array));
-	DataLogger_AddMessage(&datalog_msg, LOG_tick.array, sizeof(LOG_tick.array));
-
-	//4. After added all the message, call complete tx message to add check to ensure data integrity
-	DataLogger_CompleteTxMessage(&datalog_msg);
-	CDC_Transmit_FS(datalog_msg.pMsg, datalog_msg.size);
-
-	/*============================================================================*/
+    	LOG_left_pwm.data = v;
+    	LOG_right_pwm.data = v;
+    	LOG_left_pwm.data = differential_drive_handler.m_leftMotor;
+	LOG_right_pwm.data = differential_drive_handler.m_rightMotor;
 #else
     	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
 	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
+
 #endif
 	vTaskDelay(10);
     }
@@ -503,7 +478,7 @@ void Task_Sensor(void *param) {
 
     //Initialize climbing encoder sensor and start front distance sensor data reception
     ENCODER_Init();
-    HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
+//    HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
 
     //    //Reset encoder position
     //    ENCODER_Set_ZeroPosition(&encoderBack);
@@ -603,12 +578,13 @@ void Task_Sensor(void *param) {
 	//******************************************************************************
 	/*Common Sensor*/
 	//Distance sensor data acquisition is managed by DMA
-	//Error Handling
-	//UART error cause by noise flag, framing, overrun error happens during multibuffer dma communication
-	if (xTaskGetTickCount() - last_tf_mini_t > 500) {
-	    lifting_mode = DANGER;
-	    xTaskNotify(task_control, 0, eNoAction);
-	}
+//	HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
+//	//Error Handling
+//	//UART error cause by noise flag, framing, overrun error happens during multibuffer dma communication
+//	if (xTaskGetTickCount() - last_tf_mini_t > 500) {
+//	    lifting_mode = DANGER;
+//	    xTaskNotify(task_control, 0, eNoAction);
+//	}
 
 	//Sensor acquisition of IMU
 	mpu_error_count = (MPU6050_Read_All(&hi2c1, &MPU6050) == HAL_OK)? 0: ++mpu_error_count;
@@ -917,7 +893,54 @@ void Task_Climbing(void *param) {
 }
 
 void Task_USB(void *param) {
+#ifdef DATA_LOGGING
+    DataLogger_Init(&datalog_msg);
+#endif
     while (1) {
+#ifdef DATA_LOGGING
+	/*============================================================================*/
+	/*Input sine wave*/
+//	uint16_t sampling_rate = 750;
+//	//generate sine wave
+//	float v = 0.75 * sin(2 * M_PI * tick_count/sampling_rate);
+//	tick_count++;
+//
+//	int motor_output_1 = v * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+//	int motor_output_2 = v * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+//	MotorThrottle(&sabertooth_handler, TARGET_2, motor_output_1);
+//	MotorThrottle(&sabertooth_handler, TARGET_1, motor_output_2);
+//
+//	LOG_battery = voltage_level;
+//	LOG_left_vel = motor_output_1;
+//	LOG_right_vel = motor_output_2;
+	/*============================================================================*/
+
+    	//Define variable
+    	LOG_left_enc.data = base_encoder[LEFT_INDEX].encoder_value;
+    	LOG_right_enc.data = base_encoder[RIGHT_INDEX].encoder_value;
+    	LOG_left_enc_vel.data = base_velocity[LEFT_INDEX].angular_velocity;
+    	LOG_right_enc_vel.data = base_velocity[RIGHT_INDEX].angular_velocity;
+//	LOG_left_pwm.data = 0.54321;
+//	LOG_right_pwm.data = 0.56789;
+//	LOG_left_enc.data = 0x12345670;
+//	LOG_right_enc.data = 0x89ABCDEF;
+//	LOG_left_enc_vel.data = 0.12345;
+//	LOG_right_enc_vel.data = 0.67890;
+    	LOG_tick.data = xTaskGetTickCount();
+
+    	DataLogger_AddMessage(&datalog_msg, LOG_battery.array, sizeof(LOG_battery.array));
+    	DataLogger_AddMessage(&datalog_msg, LOG_left_pwm.array, sizeof(LOG_left_pwm.array));
+    	DataLogger_AddMessage(&datalog_msg, LOG_right_pwm.array, sizeof(LOG_right_pwm.array));
+    	DataLogger_AddMessage(&datalog_msg, LOG_left_enc.array, sizeof(LOG_left_enc.array));
+    	DataLogger_AddMessage(&datalog_msg, LOG_right_enc.array, sizeof(LOG_right_enc.array));
+	DataLogger_AddMessage(&datalog_msg, LOG_left_enc_vel.array, sizeof(LOG_left_enc_vel.array));
+	DataLogger_AddMessage(&datalog_msg, LOG_right_enc_vel.array, sizeof(LOG_right_enc_vel.array));
+	DataLogger_AddMessage(&datalog_msg, LOG_tick.array, sizeof(LOG_tick.array));
+
+	//4. After added all the message, call complete tx message to add check to ensure data integrity
+	DataLogger_CompleteTxMessage(&datalog_msg);
+	CDC_Transmit_FS(datalog_msg.pMsg, datalog_msg.size);
+#endif
 #if USB_CMD_CONTROL
 	if (usbBuffer[0] == USB_STOP) {
 	    lifting_mode = STOP;
@@ -936,7 +959,7 @@ void Task_USB(void *param) {
 	}
 	usbBuffer[0] = 0;
 #endif
-	vTaskDelay(1000);
+	vTaskDelay(1);
     }
 }
 
@@ -963,6 +986,9 @@ void Task_Battery(void *param) {
 	    xQueueReceive(queue_battery_level, &dummy, 0);
 	}
 	xQueueSend(queue_battery_level, (void*)&voltage_level, 0);
+#ifdef DATA_LOGGING
+	LOG_battery.data = voltage_level;
+#endif
 	vTaskDelay(pdMS_TO_TICKS(10000));
 	//Error Handling
 	if(error_count > 50){

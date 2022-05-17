@@ -16,7 +16,8 @@
 
 void USB_TransmitData(uint8_t command)
 {
-	CDC_Transmit_FS((uint8_t*)&command, 1);
+//	CDC_Transmit_FS((uint8_t*)&command, 1);
+    (void*)command;
 }
 
 int prev_dist = 0;//Calculate curb difference
