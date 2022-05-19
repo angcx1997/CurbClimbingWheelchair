@@ -130,6 +130,12 @@ extern TaskHandle_t task_navigation_sensor;
 extern TaskHandle_t task_joystick;
 extern TaskHandle_t task_climbing;
 extern TaskHandle_t task_usb;
+extern TaskHandle_t task_climb_encoder;
+extern TaskHandle_t task_imu;
+extern TaskHandle_t task_wheel_encoder;
+extern TaskHandle_t task_climb_switches;
+
+
 
 extern QueueHandle_t queue_joystick_raw;
 extern QueueHandle_t encoder;
@@ -301,6 +307,8 @@ void Task_Keyboard(void *param) {
 	    lifting_mode = DANGER;
 	    xTaskNotify(task_control, 0, eNoAction);
 	}
+
+
 	vTaskDelayUntil(&tick, period);
     }
 }
@@ -553,7 +561,6 @@ void Task_Sensor(void *param) {
 	//******************************************************************************
 	/*Navigation sensor data acquisition*/
 	/*Data Acquisition*/
-	//Disable interrupt
 	HAL_StatusTypeDef briter_dma_status;
 	if (base_encoder_tx_flag % 2 == 0) {
 	    briter_dma_status = BRITER_RS485_GetValue_DMA_TX(&base_encoder[0]);
@@ -597,6 +604,84 @@ void Task_Sensor(void *param) {
 	vTaskDelay(period);
     }
 }
+
+void Task_Wheel_Encoder(void* param){
+    //Initialize encoder sensor for base wheel
+    BRITER_RS485_Init(&(base_encoder[0]), 0x02, &huart4);
+    BRITER_RS485_Init(&(base_encoder[1]), 0x01, &huart4);
+    //Flag to alternate the address of rs485 tx to avoid congestion
+    uint8_t base_encoder_tx_flag = 0;
+    while(1){
+	/*Data Acquisition*/
+	HAL_StatusTypeDef briter_dma_status;
+	if (base_encoder_tx_flag % 2 == 0) {
+	    briter_dma_status = BRITER_RS485_GetValue_DMA_TX(&base_encoder[0]);
+	    base_encoder_tx_flag ++;
+	}else
+	{
+	    BRITER_RS485_GetValue_DMA_TX(&base_encoder[1]);
+	    base_encoder_tx_flag --;
+	}
+	if (briter_dma_status == HAL_OK)
+	       BRITER_RS485_GetValue_DMA_RX(base_encoder);
+
+	/*Error Handling*/
+	//If encoder is faulty, no data reception, suspend all task
+	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 1000 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 1000) {
+	    lifting_mode = DANGER;
+	    xTaskNotify(task_control, 0, eNoAction);
+
+	vTaskDelay(1);
+	}
+    }
+}
+
+void Task_Curb_Detector(void* param){
+    while(1){
+	//Distance sensor data acquisition is managed by DMA
+	HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
+	//Error Handling
+	//UART error cause by noise flag, framing, overrun error happens during multibuffer dma communication
+	if (xTaskGetTickCount() - last_tf_mini_t > 500) {
+	    lifting_mode = DANGER;
+	    xTaskNotify(task_control, 0, eNoAction);
+	}
+	vTaskDelay(1);
+    }
+}
+
+
+void Task_Climb_Switches(void* param){
+    //Limit switch located on each individual climbing leg
+    //Initialize member
+    Button_TypeDef rearLS1 = {
+	0
+    }, rearLS2 = {
+	0
+    }, backLS1 = {
+	0
+    }, backLS2 = {
+	0
+    };
+    rearLS1.gpioPort = LimitSW1_GPIO_Port;
+    rearLS1.gpioPin = LimitSW1_Pin;
+    rearLS2.gpioPort = LimitSW2_GPIO_Port;
+    rearLS2.gpioPin = LimitSW2_Pin;
+    backLS1.gpioPort = LimitSW3_GPIO_Port;
+    backLS1.gpioPin = LimitSW3_Pin;
+    backLS2.gpioPort = LimitSW4_GPIO_Port;
+    backLS2.gpioPin = LimitSW4_Pin;
+
+    while(1){
+	//Read limit switch state
+	Button_FilteredInput(&rearLS1, 5);
+	Button_FilteredInput(&rearLS2, 5);
+	Button_FilteredInput(&backLS1, 5);
+	Button_FilteredInput(&backLS2, 5);
+	vTaskDelay(1);
+    }
+}
+
 
 /**
  * Joystick interface

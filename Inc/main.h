@@ -119,6 +119,12 @@ void Task_Joystick(void *param);
 void Task_Climbing(void *param);
 void Task_USB(void *param);
 void Task_Battery(void* param);
+void Task_Climb_Encoder(void* param);
+void Task_IMU(void* param);
+void Task_Wheel_Encoder(void* param);
+void Task_Curb_Detector(void* param);
+void Task_Climb_Switches(void* param);
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

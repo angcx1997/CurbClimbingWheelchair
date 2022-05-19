@@ -126,6 +126,12 @@ TaskHandle_t task_joystick;
 TaskHandle_t task_climbing;
 TaskHandle_t task_usb;
 TaskHandle_t task_battery;
+TaskHandle_t task_climb_encoder;
+TaskHandle_t task_imu;
+TaskHandle_t task_wheel_encoder;
+TaskHandle_t task_curb_detector;
+TaskHandle_t task_climb_switches;
+
 
 QueueHandle_t queue_joystick_raw;
 QueueHandle_t queue_battery_level;
@@ -293,6 +299,16 @@ int main(void) {
     status = xTaskCreate(Task_USB, "USB Task", 250, NULL, 2, &task_usb);
     configASSERT(status == pdPASS);
     status = xTaskCreate(Task_Battery, "Battery Task", 250, NULL, 2, &task_battery);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Climb_Encoder, "Climb Encoder Task", 250, NULL, 2, &task_climb_encoder);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_IMU, "IMU Task", 250, NULL, 2, &task_imu);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Wheel_Encoder, "Wheel Encoder Task", 250, NULL, 2, &task_wheel_encoder);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Curb_Detector, "Curb Detector Task", 250, NULL, 2, &task_curb_detector);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Climb_Switches, "Climb Switches Task", 250, NULL, 2, &task_climb_switches);
     configASSERT(status == pdPASS);
     /* USER CODE END RTOS_THREADS */
 
