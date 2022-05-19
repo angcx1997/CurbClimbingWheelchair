@@ -76,7 +76,7 @@ typedef struct {
     #define ULONG_MAX 0xFFFFFFFF
 #endif
 //#define DEBUGGING
-//#define DATA_LOGGING
+#define DATA_XXXLOGGING
 #ifndef MAX
     #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #endif
@@ -219,7 +219,7 @@ MPU6050_t MPU6050;
     volatile uint32_t tick_count = 0;
     DataLogger_Msg_t datalog_msg;
     uint8_t usbBuffer[64];
-    float v = 0.75;
+    float v = 0.5;
 #endif
 
 
@@ -396,10 +396,10 @@ void Task_NormalDrive(void *param) {
 	    xQueueReceive(queue_battery_level, &voltage_level, 0);
 	}
 
-//	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
-//	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
+	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
+	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 	//TODO: Add PID controller here
-#ifdef DATA_XXXLOGGING
+#ifdef DATA_LOGGING
 	/*============================================================================*/
 	/*Input wave*/
 	uint16_t sampling_rate = 750;
@@ -407,24 +407,24 @@ void Task_NormalDrive(void *param) {
 	//generate sine wave
 //	float v = 0.75 * sin(2 * M_PI * tick_count/sampling_rate);
 	//Fourier wave
-//	v = 0.4* (sin(2 * M_PI * 0.1 * tick_count/sampling_rate) + sin(2 * M_PI * 0.2 * tick_count/sampling_rate)
+//	v = 0.3* (sin(2 * M_PI * 0.1 * tick_count/sampling_rate) + sin(2 * M_PI * 0.2 * tick_count/sampling_rate)
 //		    + sin(2 * M_PI * 0.4 * tick_count/sampling_rate) + sin(2 * M_PI * tick_count/sampling_rate));
 	//Square wave
-//	if (tick_count % 750 == 0)
+//	if (tick_count % 300 == 0)
 //	    v = -v;
 
-	int motor_output_1 = v * SABERTOOTH_MAX_ALLOWABLE_VALUE;
-	int motor_output_2 = v * SABERTOOTH_MAX_ALLOWABLE_VALUE;
-	MotorThrottle(&sabertooth_handler, TARGET_2, motor_output_1);
-	MotorThrottle(&sabertooth_handler, TARGET_1, motor_output_2);
+//	int motor_output_1 = v * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+//	int motor_output_2 = v * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+//	MotorThrottle(&sabertooth_handler, TARGET_2, motor_output_1);
+//	MotorThrottle(&sabertooth_handler, TARGET_1, motor_output_2);
 	/*============================================================================*/
 	/*Joystick input*/
-//    	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
-//    	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
+    	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
+    	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 
     	//Define variable
-    	LOG_left_pwm.data = v;
-    	LOG_right_pwm.data = v;
+//    	LOG_left_pwm.data = v;
+//    	LOG_right_pwm.data = v;
     	LOG_left_pwm.data = differential_drive_handler.m_leftMotor;
 	LOG_right_pwm.data = differential_drive_handler.m_rightMotor;
 #else
@@ -432,7 +432,7 @@ void Task_NormalDrive(void *param) {
 	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 
 #endif
-	vTaskDelay(10);
+	vTaskDelay(15);
     }
 }
 
@@ -589,7 +589,7 @@ void Task_Sensor(void *param) {
 	//Sensor acquisition of IMU
 	mpu_error_count = (MPU6050_Read_All(&hi2c1, &MPU6050) == HAL_OK)? 0: ++mpu_error_count;
 
-	if(mpu_error_count > 20){
+	if(mpu_error_count > 50){
 	    lifting_mode = DANGER;
 	    xTaskNotify(task_control, 0, eNoAction);;
 	}
@@ -640,7 +640,7 @@ void Task_Joystick(void *param) {
 	    xSemaphoreGive(mutex_joystick);
 	}
 
-	vTaskDelayUntil(&tick, period);
+	vTaskDelay(period);
     }
 }
 
@@ -959,7 +959,7 @@ void Task_USB(void *param) {
 	}
 	usbBuffer[0] = 0;
 #endif
-	vTaskDelay(1);
+	vTaskDelay(5);
     }
 }
 
