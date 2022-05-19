@@ -650,6 +650,25 @@ void Task_Curb_Detector(void* param){
     }
 }
 
+void Task_Climb_Encoder(void* param){
+	//Initialize climbing encoder sensor and start front distance sensor data reception
+	ENCODER_Init();
+	while(1){
+		/*Climbing Sensor Data Acquisition and Processing*/
+		/*Data Acquisition*/
+		//Read encoder data
+
+		ENCODER_Get_Angle(&encoderBack);
+		ENCODER_Get_Angle(&encoderFront);
+
+		/*Error Handling*/
+		//If encoder is faulty, no data reception, suspend all task
+		if ((xTaskGetTickCount() - last_can_rx_t[0]) > 1000 || (xTaskGetTickCount() - last_can_rx_t[1]) > 1000) {
+			lifting_mode = DANGER;
+			xTaskNotify(task_control, 0, eNoAction);
+		}
+	}
+}
 
 void Task_Climb_Switches(void* param){
     //Limit switch located on each individual climbing leg
@@ -680,6 +699,39 @@ void Task_Climb_Switches(void* param){
 	Button_FilteredInput(&backLS2, 5);
 	vTaskDelay(1);
     }
+}
+
+void Task_IMU(void* param){
+	uint32_t mpu_error_count = 0;
+	uint32_t state_count = xTaskGetTickCount();
+
+	while (MPU6050_Init(&hi2c1) != HAL_OK)
+	{
+	if (xTaskGetTickCount() - state_count > 50)
+		if(MPU6050_I2C_Reset(&hi2c1) == HAL_ERROR){
+		Error_Handler();
+		}
+	}
+	while(1){
+		//Sensor acquisition of IMU
+		if(MPU6050_Read_All(&hi2c1, &MPU6050) == HAL_OK){
+			mpu_error_count = 0;
+		}else{
+			mpu_error_count++;
+		}
+
+		if(MPU6050_I2C_Reset(&hi2c1) == HAL_ERROR){
+			mpu_error_count++;
+		}else{
+			mpu_error_count = 0;
+		}
+
+		if(mpu_error_count > 50){
+			lifting_mode = DANGER;
+			xTaskNotify(task_control, 0, eNoAction);;
+		}
+
+	}
 }
 
 
