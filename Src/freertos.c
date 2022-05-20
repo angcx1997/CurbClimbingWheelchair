@@ -390,6 +390,10 @@ void Task_Wheel_Encoder(void *param) {
     uint8_t base_encoder_tx_flag = 0;
     uint32_t irq_retval;
 
+    //Filter for velocity
+    const float velocity_filter = 0.85;
+    float prev_velocity[2] = {0};
+
     TickType_t tick = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(5); //execution period
 
@@ -412,6 +416,9 @@ void Task_Wheel_Encoder(void *param) {
 		if (base_encoder_tx_flag % 2 == 0) {
 		    base_encoder[LEFT_INDEX].encoder_value = irq_retval;
 		    calculateVelocity(&base_velocity[LEFT_INDEX], base_encoder[LEFT_INDEX].encoder_value);
+		    //Data smoothening
+		    base_velocity[LEFT_INDEX].angular_velocity = base_velocity[LEFT_INDEX].angular_velocity * velocity_filter + (1 - velocity_filter) * prev_velocity[LEFT_INDEX];
+		    prev_velocity[LEFT_INDEX] = base_velocity[LEFT_INDEX].angular_velocity;
 		    last_rs485_enc_t[LEFT_INDEX] = xTaskGetTickCount();
 		    base_encoder_tx_flag++;
 		}
@@ -419,6 +426,9 @@ void Task_Wheel_Encoder(void *param) {
 		    base_encoder[RIGHT_INDEX].encoder_value = irq_retval;
 		    calculateVelocity(&base_velocity[RIGHT_INDEX], base_encoder[RIGHT_INDEX].encoder_value);
 		    last_rs485_enc_t[RIGHT_INDEX] = xTaskGetTickCount();
+		    //Data smoothening
+		    base_velocity[RIGHT_INDEX].angular_velocity = base_velocity[RIGHT_INDEX].angular_velocity * velocity_filter + (1 - velocity_filter) * prev_velocity[RIGHT_INDEX];
+		    prev_velocity[RIGHT_INDEX] = base_velocity[RIGHT_INDEX].angular_velocity;
 		    base_encoder_tx_flag--;
 		}
 	    }

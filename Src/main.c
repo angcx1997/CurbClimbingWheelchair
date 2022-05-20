@@ -454,6 +454,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	else if (address == base_encoder[RIGHT_INDEX].addr) {
 	    retval = BRITER_RS485_GetValue_DMA_Callback(&base_encoder[RIGHT_INDEX], RS485_Enc_RX_buf);
 	}
+	else{
+	    retval = BRITER_RS485_ERROR;
+	}
 	xTaskNotifyFromISR(task_wheel_encoder, retval, eSetValueWithOverwrite, &xHigherPriorityTaskWoken);
 	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 	return;
