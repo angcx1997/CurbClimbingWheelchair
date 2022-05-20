@@ -63,7 +63,7 @@ void checkSigns(PID_Struct* pid)
 	}
 }
 
-double clamp(double value, double min, double max)
+float clamp(float value, float min, float max)
 {
 	if (value > max)
 	{
@@ -76,12 +76,12 @@ double clamp(double value, double min, double max)
 	return value;
 }
 
-uint8_t bounded(double value, double min, double max)
+uint8_t bounded(float value, float min, float max)
 {
 	return (min < value) && (value < max);
 }
 
-void PID_setPID(PID_Struct* pid, double p, double i, double d)
+void PID_setPID(PID_Struct* pid, float p, float i, float d)
 {
 	pid->P = p;
 	pid->I = i;
@@ -89,7 +89,7 @@ void PID_setPID(PID_Struct* pid, double p, double i, double d)
 	checkSigns(pid);
 }
 
-void PID_setPIDF(PID_Struct* pid, double p, double i, double d, double f)
+void PID_setPIDF(PID_Struct* pid, float p, float i, float d, float f)
 {
 	pid->P = p;
 	pid->I = i;
@@ -98,13 +98,13 @@ void PID_setPIDF(PID_Struct* pid, double p, double i, double d, double f)
 	checkSigns(pid);
 }
 
-void PID_setF(PID_Struct* pid, double f)
+void PID_setF(PID_Struct* pid, float f)
 {
 	pid->F = f;
 	checkSigns(pid);
 }
 //TODO: Implement dynamic integrator
-void PID_setMaxIOutput(PID_Struct* pid, double maximum)
+void PID_setMaxIOutput(PID_Struct* pid, float maximum)
 {
 	pid->maxIOutput = maximum;
 	if(pid->I != 0)
@@ -113,7 +113,7 @@ void PID_setMaxIOutput(PID_Struct* pid, double maximum)
 	}
 }
 
-void PID_setMinIOutput(PID_Struct* pid, double minimum)
+void PID_setMinIOutput(PID_Struct* pid, float minimum)
 {
 	pid->minIOutput = minimum;
 	if(pid->I != 0)
@@ -123,7 +123,7 @@ void PID_setMinIOutput(PID_Struct* pid, double minimum)
 }
 
 
-void PID_setOutputLimits(PID_Struct* pid, double min, double max)
+void PID_setOutputLimits(PID_Struct* pid, float min, float max)
 {
 	if(max > min)
 	{
@@ -142,32 +142,32 @@ void PID_setDirection(PID_Struct* pid, int reversed)
 	pid->reversed = reversed;
 }
 
-void PID_setSetpoint(PID_Struct* pid, double setpoint)
+void PID_setSetpoint(PID_Struct* pid, float setpoint)
 {
 	pid->setpoint = setpoint;
 }
 
-double PID_skipCycle(PID_Struct* pid)
+float PID_skipCycle(PID_Struct* pid)
 {
 	pid->prev_time = HAL_GetTick();
 	return pid->lastOutput;
 }
 
-double PID_getOutput(PID_Struct* pid, double actual, double setpoint)
+float PID_getOutput(PID_Struct* pid, float actual, float setpoint)
 {
-	double output = 0;
-	double Poutput = 0;
-	double Ioutput = 0;
-	double Doutput = 0;
-	double Foutput = 0;
+	float output = 0;
+	float Poutput = 0;
+	float Ioutput = 0;
+	float Doutput = 0;
+	float Foutput = 0;
 
 	//Remember old errorSum for use in reverting errorSum if any limits are reached later on
-	double oldErrorSum = pid->errorSum;
+	float oldErrorSum = pid->errorSum;
 
 	pid->setpoint = setpoint;
 
 	//Do the simple parts of the calculations
-	double error = setpoint - actual;
+	float error = setpoint - actual;
 
 	//If this is our first time running this  we don't actually _have_ a previous input or output.
 	//For sensor, sanely assume it was exactly where it is now.
@@ -182,7 +182,7 @@ double PID_getOutput(PID_Struct* pid, double actual, double setpoint)
 	}
 
 	//Get time difference since last run
-	double dt = (double)(HAL_GetTick() - pid->prev_time) / (double)FREQUENCY;
+	float dt = (float)(HAL_GetTick() - pid->prev_time) / (float)FREQUENCY;
 
 	//Only run cycle when time passed is greater than 1/Hz
 	if (dt < 1.0 / pid->frequency)
@@ -204,7 +204,7 @@ double PID_getOutput(PID_Struct* pid, double actual, double setpoint)
 	//Calculate D Term
 	//If rate of change of error is positive, then the derivative term should be positive to track
 	//target setpoint, as system is lagging behind
-	double error_rate = (error - pid->prevError) / dt;
+	float error_rate = (error - pid->prevError) / dt;
 	Doutput = pid->D * error_rate;
 
 	//The Iterm is more complex. There's several things to factor in to make it easier to deal with.
@@ -224,8 +224,8 @@ double PID_getOutput(PID_Struct* pid, double actual, double setpoint)
 	}
 #else
 	//TODO: Dyamic integrator clamping
-	double I_max = fmax(pid->maxOutput - Poutput,0);
-	double I_min = fmin(pid->minOutput - Poutput,0);
+	float I_max = fmax(pid->maxOutput - Poutput,0);
+	float I_min = fmin(pid->minOutput - Poutput,0);
 	pid->maxIOutput = I_max;
 	pid->minIOutput = I_min;
 
@@ -285,7 +285,7 @@ double PID_getOutput(PID_Struct* pid, double actual, double setpoint)
 	return output;
 }
 
-double PID_getOutputFast(PID_Struct* pid)
+float PID_getOutputFast(PID_Struct* pid)
 {
 	return PID_getOutput(pid, pid->lastActual, pid->setpoint);
 }
@@ -296,28 +296,28 @@ void PID_reset(PID_Struct* pid)
 	pid->errorSum = 0;
 }
 
-void PID_setOutputRampRate(PID_Struct* pid, double rate)
+void PID_setOutputRampRate(PID_Struct* pid, float rate)
 {
 	pid->outputRampRate = rate;
 }
 
-void PID_setOutputDescentRate(PID_Struct* pid, double rate)
+void PID_setOutputDescentRate(PID_Struct* pid, float rate)
 {
 	pid->outputDescentRate = rate;
 }
 
-void PID_setSetpointRange(PID_Struct* pid, double range)
+void PID_setSetpointRange(PID_Struct* pid, float range)
 {
 	pid->setpointRange = range;
 }
 
-void PID_setOutputFilter(PID_Struct* pid, double strength)
+void PID_setOutputFilter(PID_Struct* pid, float strength)
 {
 	if(strength == 0 || bounded(strength, 0, 1))
 		pid->outputFilter = strength;
 }
 
-void PID_setFrequency(PID_Struct* pid, double freq)
+void PID_setFrequency(PID_Struct* pid, float freq)
 {
 	pid->frequency = freq;
 }

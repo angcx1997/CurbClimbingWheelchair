@@ -51,6 +51,7 @@
 #include "encoder_util.h"
 #include "usbd_cdc_if.h"
 #include "../script/DataLogger.h"
+#include "PID_base.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -206,8 +207,7 @@ Debug_Tick_t encoder_tick_taken = {
 extern wheel_velocity_t base_velocity[2];
 
 MPU6050_t MPU6050;
-
-#ifdef DATA_LOGGING
+  #ifdef DATA_LOGGING
     //Declare variable
     volatile uint16_byte_u LOG_battery;
     volatile float_byte_u LOG_left_pwm;
@@ -222,7 +222,7 @@ MPU6050_t MPU6050;
     uint8_t usbBuffer[64];
     float v = 0.5;
 #endif
-
+    volatile uint32_t tick_count = 0;
 /* USER CODE END Variables */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -280,13 +280,46 @@ void Task_NormalDrive(void *param) {
     //Battery level
     uint16_t voltage_level = 25;
 
+    /*
+     * Speed PID Controller for 2 wheel
+     */
+    PID_Struct pid[2];
+    const float p[2] = {
+	    //	17.7, 13.97
+	    5, 5
+    }; /*!< Proportional constant in both left and right wheel PID */
+    const float i[2] = {
+	    98.95, 102.54
+    }; /*!< Integral constant in both left and right wheel PID */
+    const float d[2] = {
+	    0.0, 0.0
+    }; /*!< Derivative constant in both left and right wheel PID */
+    const float f[2] = {
+	    0.0, 0.0
+    }; /*!< Feedforward constant in both left and right wheel PID */
+    float pwm_volt[2]; /*!< PWM voltage to be input into motor */
+    float reference_vel[2]; /*!< Setpoint for PID controller */
+    float max_i_output = 20; /*!< To clamp integral output */
+    float pid_freq = 1000;
+
+    //Setup right wheel PID
+    PID_Init(&pid[RIGHT_INDEX]);
+    PID_setPIDF(&pid[RIGHT_INDEX], p[RIGHT_INDEX], i[RIGHT_INDEX], d[RIGHT_INDEX], f[RIGHT_INDEX]);
+    PID_setOutputLimits(&pid[RIGHT_INDEX], -20, 20);
+    PID_setMaxIOutput(&pid[RIGHT_INDEX], 20);
+    PID_setMinIOutput(&pid[RIGHT_INDEX], -20);
+    PID_setFrequency(&pid[RIGHT_INDEX], pid_freq);
+
+    //Setup left wheel PID
+    PID_Init(&pid[LEFT_INDEX]);
+    PID_setPIDF(&pid[LEFT_INDEX], p[LEFT_INDEX], i[LEFT_INDEX], d[LEFT_INDEX], f[LEFT_INDEX]);
+    PID_setOutputLimits(&pid[LEFT_INDEX], -20, 20);
+    PID_setMaxIOutput(&pid[LEFT_INDEX], 20);
+    PID_setMinIOutput(&pid[LEFT_INDEX], -20);
+    PID_setFrequency(&pid[LEFT_INDEX], pid_freq);
+
     while (1) {
 	if (lifting_mode == NORMAL) {
-	    /*Data Processing*/
-//	    	TickType_t start_t = xTaskGetTickCount();
-//	    	float tmp = calculateVelocity(&left_wheel, base_encoder[0].encoder_value);
-//	    	float tmp1 = calculateVelocity(&right_wheel, base_encoder[1].encoder_value);
-//	    	TickType_t total_t = xTaskGetTickCount();
 	    //When user in normal driving mode
 	    LED_Mode_Configuration(NORMAL);
 
@@ -342,9 +375,38 @@ void Task_NormalDrive(void *param) {
 	    xQueueReceive(queue_battery_level, &voltage_level, 0);
 	}
 
-	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
-	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
+//	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
+//	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
+
+
 	//TODO: Add PID controller here
+	//generate sine wave
+	uint16_t sampling_rate = 750;
+	tick_count++;
+	float v = 0.75 * sin(2 * M_PI * tick_count/sampling_rate);
+	reference_vel[LEFT_INDEX] = v;
+	reference_vel[RIGHT_INDEX] = v;
+	if (fabs(reference_vel[LEFT_INDEX]) == 0 && fabs(base_velocity[LEFT_INDEX].velocity) < 0.05) {
+	    //Reset PID if it is too small
+	    pwm_volt[LEFT_INDEX] = 0;
+	    PID_reset(&pid[LEFT_INDEX]);
+	}
+	else {
+	    pwm_volt[LEFT_INDEX] = PID_getOutput(&pid[LEFT_INDEX], base_velocity[LEFT_INDEX].velocity, reference_vel[LEFT_INDEX]);
+	}
+
+	if (fabs(reference_vel[RIGHT_INDEX]) == 0 && fabs(base_velocity[RIGHT_INDEX].velocity) < 0.05) {
+	    pwm_volt[RIGHT_INDEX] = 0;
+	    PID_reset(&pid[RIGHT_INDEX]);
+	}
+	else {
+	    pwm_volt[RIGHT_INDEX] = PID_getOutput(&pid[RIGHT_INDEX], base_velocity[RIGHT_INDEX].velocity, reference_vel[RIGHT_INDEX]);
+	}
+	int motor_output_1 = (float)(pwm_volt[LEFT_INDEX]/voltage_level) * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+	int motor_output_2 = (float)(pwm_volt[RIGHT_INDEX]/voltage_level)  * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+	MotorThrottle(&sabertooth_handler, TARGET_2, motor_output_1);
+	MotorThrottle(&sabertooth_handler, TARGET_1, motor_output_2);
+
 #ifdef DATA_xxxLOGGING
 	/*============================================================================*/
 	/*Input wave*/
@@ -374,8 +436,8 @@ void Task_NormalDrive(void *param) {
     	LOG_left_pwm.data = differential_drive_handler.m_leftMotor;
 	LOG_right_pwm.data = differential_drive_handler.m_rightMotor;
 #else
-	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
-	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
+//	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
+//	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 
 #endif
 	vTaskDelay(15);
@@ -392,7 +454,9 @@ void Task_Wheel_Encoder(void *param) {
 
     //Filter for velocity
     const float velocity_filter = 0.85;
-    float prev_velocity[2] = {0};
+    float prev_velocity[2] = {
+	    0
+    };
 
     TickType_t tick = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(5); //execution period
@@ -417,8 +481,9 @@ void Task_Wheel_Encoder(void *param) {
 		    base_encoder[LEFT_INDEX].encoder_value = irq_retval;
 		    calculateVelocity(&base_velocity[LEFT_INDEX], base_encoder[LEFT_INDEX].encoder_value);
 		    //Data smoothening
-		    base_velocity[LEFT_INDEX].angular_velocity = base_velocity[LEFT_INDEX].angular_velocity * velocity_filter + (1 - velocity_filter) * prev_velocity[LEFT_INDEX];
-		    prev_velocity[LEFT_INDEX] = base_velocity[LEFT_INDEX].angular_velocity;
+		    base_velocity[LEFT_INDEX].velocity = base_velocity[LEFT_INDEX].velocity
+			    * velocity_filter + (1 - velocity_filter) * prev_velocity[LEFT_INDEX];
+		    prev_velocity[LEFT_INDEX] = base_velocity[LEFT_INDEX].velocity;
 		    last_rs485_enc_t[LEFT_INDEX] = xTaskGetTickCount();
 		    base_encoder_tx_flag++;
 		}
@@ -427,8 +492,9 @@ void Task_Wheel_Encoder(void *param) {
 		    calculateVelocity(&base_velocity[RIGHT_INDEX], base_encoder[RIGHT_INDEX].encoder_value);
 		    last_rs485_enc_t[RIGHT_INDEX] = xTaskGetTickCount();
 		    //Data smoothening
-		    base_velocity[RIGHT_INDEX].angular_velocity = base_velocity[RIGHT_INDEX].angular_velocity * velocity_filter + (1 - velocity_filter) * prev_velocity[RIGHT_INDEX];
-		    prev_velocity[RIGHT_INDEX] = base_velocity[RIGHT_INDEX].angular_velocity;
+		    base_velocity[RIGHT_INDEX].velocity = base_velocity[RIGHT_INDEX].velocity
+			    * velocity_filter + (1 - velocity_filter) * prev_velocity[RIGHT_INDEX];
+		    prev_velocity[RIGHT_INDEX] = base_velocity[RIGHT_INDEX].velocity;
 		    base_encoder_tx_flag--;
 		}
 	    }
@@ -923,8 +989,8 @@ void Task_USB(void *param) {
     	//Define variable
 //    	LOG_left_enc.data = base_encoder[LEFT_INDEX].encoder_value;
 //    	LOG_right_enc.data = base_encoder[RIGHT_INDEX].encoder_value;
-//    	LOG_left_enc_vel.data = base_velocity[LEFT_INDEX].angular_velocity;
-//    	LOG_right_enc_vel.data = base_velocity[RIGHT_INDEX].angular_velocity;
+//    	LOG_left_enc_vel.data = base_velocity[LEFT_INDEX].velocity;
+//    	LOG_right_enc_vel.data = base_velocity[RIGHT_INDEX].velocity;
 	LOG_left_pwm.data = 0.54321;
 	LOG_right_pwm.data = 0.56789;
 	LOG_left_enc.data = 0x12345670;

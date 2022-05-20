@@ -8,6 +8,8 @@
 #include "encoder_util.h"
 #include <math.h>
 
+
+
 float calculateVelocity(wheel_velocity_t* wheel, uint32_t curr_position){
     //If first iteration
     if(wheel->last_position == 0 && wheel->last_tick == 0){
@@ -31,14 +33,14 @@ float calculateVelocity(wheel_velocity_t* wheel, uint32_t curr_position){
 
     wheel->total_position += wheel->d_position;
 
-    //Calculate angular_velocity
-    wheel->angular_velocity = 0.125 * 1000.0 * (float)(wheel->d_position) / BRITER_RS485_PPR  * 2.0 * 3.1415926 / (float)dt;
+    //Calculate velocity
+    wheel->velocity = WHEEL_RADIUS * 1000.0 * (float)(wheel->d_position) / BRITER_RS485_PPR  * 2.0 * 3.1415926 / (float)dt;
 
     //Store last reading for subsequent calculation
     wheel->last_tick = HAL_GetTick();
     wheel->last_position = curr_position;
 
-    return wheel->angular_velocity;
+    return wheel->velocity;
 }
 
 
