@@ -110,11 +110,7 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 void Task_Control(void* param);
-void Task_Keyboard(void *param);
 void Task_NormalDrive(void *param);
-void Task_Navigation_Sensor(void* param);
-void Task_Climb_Sensor(void *param);
-void Task_Sensor(void *param);
 void Task_Joystick(void *param);
 void Task_Climbing(void *param);
 void Task_USB(void *param);
@@ -123,7 +119,7 @@ void Task_Climb_Encoder(void* param);
 void Task_IMU(void* param);
 void Task_Wheel_Encoder(void* param);
 void Task_Curb_Detector(void* param);
-void Task_Climb_Switches(void* param);
+void Task_Switches(void* param);
 
 /* USER CODE END EFP */
 

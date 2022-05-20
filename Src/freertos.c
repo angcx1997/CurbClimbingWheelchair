@@ -73,10 +73,10 @@ typedef struct {
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #ifndef ULONG_MAX
-    #define ULONG_MAX 0xFFFFFFFF
+#define ULONG_MAX 0xFFFFFFFF
 #endif
 //#define DEBUGGING
-#define DATA_XXXLOGGING
+//#define DATA_LOGGING
 #ifndef MAX
     #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #endif
@@ -123,19 +123,14 @@ extern DMA_HandleTypeDef hdma_usart6_rx;
 extern DMA_HandleTypeDef hdma_usart6_tx;
 
 extern TaskHandle_t task_control;
-extern TaskHandle_t task_keyboard;
 extern TaskHandle_t task_normalDrive;
-extern TaskHandle_t task_climb_sensor;
-extern TaskHandle_t task_navigation_sensor;
 extern TaskHandle_t task_joystick;
 extern TaskHandle_t task_climbing;
 extern TaskHandle_t task_usb;
 extern TaskHandle_t task_climb_encoder;
 extern TaskHandle_t task_imu;
 extern TaskHandle_t task_wheel_encoder;
-extern TaskHandle_t task_climb_switches;
-
-
+extern TaskHandle_t task_switches;
 
 extern QueueHandle_t queue_joystick_raw;
 extern QueueHandle_t encoder;
@@ -228,7 +223,6 @@ MPU6050_t MPU6050;
     float v = 0.5;
 #endif
 
-
 /* USER CODE END Variables */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -256,60 +250,6 @@ void Task_Control(void *param) {
 	    LED_Mode_Configuration(DANGER);
 	    portEXIT_CRITICAL();
 	}
-    }
-}
-
-/**
- * Button Interface
- */
-void Task_Keyboard(void *param) {
-    /*
-     * Use to store user button state
-     * Button 0 (leftmost)	: Get out of stop mode
-     * Button 1	(middle)	:
-     * Button 2 (rightmost)	: Go into climbing mode
-     */
-
-    //Memset struct to 0 and Initialize all button used
-    Button_TypeDef button1, button2, button3;
-    memset(&button1, 0, sizeof(Button_TypeDef));
-    memset(&button2, 0, sizeof(Button_TypeDef));
-    memset(&button3, 0, sizeof(Button_TypeDef));
-
-    button1.gpioPort = Button1_GPIO_Port;
-    button1.gpioPin = Button1_Pin;
-    button2.gpioPort = Button2_GPIO_Port;
-    button2.gpioPin = Button2_Pin;
-    button3.gpioPort = Button3_GPIO_Port;
-    button3.gpioPin = Button3_Pin;
-
-    TickType_t tick = xTaskGetTickCount();
-    const TickType_t period = pdMS_TO_TICKS(250); //execution period
-
-    while (1) {
-	Button_FilteredInput(&button1, 30);
-	Button_FilteredInput(&button2, 30);
-	Button_FilteredInput(&button3, 30);
-
-	button_state.button1 = (button1.state == 1) ? 1 : 0;
-	button_state.button2 = (button2.state == 1) ? 1 : 0;
-	button_state.button3 = (button3.state == 1) ? 1 : 0;
-
-	//Use button 1 to get out of STOP mode and enter into curb detected
-	//Where the system is only allowed to move backward
-	if (button_state.button1 == 1 && lifting_mode == STOP) {
-	    lifting_mode = CURB_DETECTED;
-	    xTaskNotify(task_normalDrive, 0, eNoAction);
-	}
-	//Use button 2 to get out of STOP mode and enter into curb detected
-	//Where the system is only allowed to move backward
-	if (button_state.button2 == 1) {
-	    lifting_mode = DANGER;
-	    xTaskNotify(task_control, 0, eNoAction);
-	}
-
-
-	vTaskDelayUntil(&tick, period);
     }
 }
 
@@ -347,8 +287,6 @@ void Task_NormalDrive(void *param) {
 //	    	float tmp = calculateVelocity(&left_wheel, base_encoder[0].encoder_value);
 //	    	float tmp1 = calculateVelocity(&right_wheel, base_encoder[1].encoder_value);
 //	    	TickType_t total_t = xTaskGetTickCount();
-
-
 	    //When user in normal driving mode
 	    LED_Mode_Configuration(NORMAL);
 
@@ -400,14 +338,14 @@ void Task_NormalDrive(void *param) {
 	}
 
 	//Receive voltage from queue battery
-	if(uxQueueMessagesWaiting(queue_battery_level)){
+	if (uxQueueMessagesWaiting(queue_battery_level)) {
 	    xQueueReceive(queue_battery_level, &voltage_level, 0);
 	}
 
 	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
 	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 	//TODO: Add PID controller here
-#ifdef DATA_LOGGING
+#ifdef DATA_xxxLOGGING
 	/*============================================================================*/
 	/*Input wave*/
 	uint16_t sampling_rate = 750;
@@ -436,7 +374,7 @@ void Task_NormalDrive(void *param) {
     	LOG_left_pwm.data = differential_drive_handler.m_leftMotor;
 	LOG_right_pwm.data = differential_drive_handler.m_rightMotor;
 #else
-    	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
+	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
 	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 
 #endif
@@ -444,25 +382,118 @@ void Task_NormalDrive(void *param) {
     }
 }
 
-/**
- * This task will used to managed the data acquisition of sensor used for
- * - Climbing
- * 	1. Limit switch
- * 	2. Encoder
- * - Navigation
- * 	1. IMU
- * 	2. Encoder for base wheel
- * - Common
- * 	1. Curb detection sensor
- * Each session is divided into data acquisition and error handling
- */
-void Task_Sensor(void *param) {
+void Task_Wheel_Encoder(void *param) {
+    //Initialize encoder sensor for base wheel
+    BRITER_RS485_Init(&(base_encoder[0]), 0x02, &huart4);
+    BRITER_RS485_Init(&(base_encoder[1]), 0x01, &huart4);
+    //Flag to alternate the address of rs485 tx to avoid congestion
+    uint8_t base_encoder_tx_flag = 0;
+    uint32_t irq_retval;
+
+    TickType_t tick = xTaskGetTickCount();
+    const TickType_t period = pdMS_TO_TICKS(5); //execution period
+
+    while (1) {
+	/*Data Acquisition*/
+	HAL_StatusTypeDef briter_dma_status;
+	if (base_encoder_tx_flag % 2 == 0) {
+	    briter_dma_status = BRITER_RS485_GetValue_DMA_TX(&base_encoder[0]);
+//	    base_encoder_tx_flag++;
+	}
+	else {
+	    briter_dma_status = BRITER_RS485_GetValue_DMA_TX(&base_encoder[1]);
+//	    base_encoder_tx_flag--;
+	}
+	if (briter_dma_status == HAL_OK)
+	    BRITER_RS485_GetValue_DMA_RX(base_encoder);
+
+	if (xTaskNotifyWait(0x00, ULONG_MAX, &irq_retval, pdMS_TO_TICKS(5)) == pdTRUE) {
+	    if (irq_retval != BRITER_RS485_ERROR) {
+		if (base_encoder_tx_flag % 2 == 0) {
+		    base_encoder[LEFT_INDEX].encoder_value = irq_retval;
+		    calculateVelocity(&base_velocity[LEFT_INDEX], base_encoder[LEFT_INDEX].encoder_value);
+		    last_rs485_enc_t[LEFT_INDEX] = xTaskGetTickCount();
+		    base_encoder_tx_flag++;
+		}
+		else {
+		    base_encoder[RIGHT_INDEX].encoder_value = irq_retval;
+		    calculateVelocity(&base_velocity[RIGHT_INDEX], base_encoder[RIGHT_INDEX].encoder_value);
+		    last_rs485_enc_t[RIGHT_INDEX] = xTaskGetTickCount();
+		    base_encoder_tx_flag--;
+		}
+	    }
+	}
+	else {
+	    continue;
+	}
+	/*Error Handling*/
+	//If encoder is faulty, no data reception, suspend all task
+	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 1000 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 1000) {
+	    lifting_mode = DANGER;
+	    xTaskNotify(task_control, 0, eNoAction);
+	}
+	vTaskDelayUntil(&tick, period);
+    }
+}
+
+void Task_Curb_Detector(void *param) {
+    while (1) {
+	//Distance sensor data acquisition is managed by DMA
+	HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
+	//Error Handling
+	//UART error cause by noise flag, framing, overrun error happens during multibuffer dma communication
+	if (xTaskGetTickCount() - last_tf_mini_t > 500) {
+	    lifting_mode = DANGER;
+	    xTaskNotify(task_control, 0, eNoAction);
+	}
+	vTaskDelay(1);
+    }
+}
+
+void Task_Climb_Encoder(void *param) {
+    //Initialize climbing encoder sensor and start front distance sensor data reception
+    ENCODER_Init();
+
+    //Only start all operation after sensor are turned on.
+    xTaskNotify(task_climbing, 0, eNoAction);
+
+    while (1) {
+	/*Climbing Sensor Data Acquisition and Processing*/
+	/*Data Acquisition*/
+	//Read encoder data
+	ENCODER_Get_Angle(&encoderBack);
+	ENCODER_Get_Angle(&encoderFront);
+
+	/*Error Handling*/
+	//If encoder is faulty, no data reception, suspend all task
+	if ((xTaskGetTickCount() - last_can_rx_t[0]) > 1000 || (xTaskGetTickCount() - last_can_rx_t[1]) > 1000) {
+	    lifting_mode = DANGER;
+	    xTaskNotify(task_control, 0, eNoAction);
+	}
+	vTaskDelay(10);
+    }
+}
+
+void Task_Switches(void *param) {
     /*
-     * Climbing
-     * Following sensor are highly critical. Single malfunction will cause the climbing motion to be failed
-     * Always make sure all sensor is in good condition
-     * Stop the climbing process if sensor fault
+     * Use to store user button state
+     * Button 0 (leftmost)	: Get out of stop mode
+     * Button 1	(middle)	:
+     * Button 2 (rightmost)	: Go into climbing mode
      */
+
+    //Memset struct to 0 and Initialize all button used
+    Button_TypeDef button1, button2, button3;
+    memset(&button1, 0, sizeof(Button_TypeDef));
+    memset(&button2, 0, sizeof(Button_TypeDef));
+    memset(&button3, 0, sizeof(Button_TypeDef));
+
+    button1.gpioPort = Button1_GPIO_Port;
+    button1.gpioPin = Button1_Pin;
+    button2.gpioPort = Button2_GPIO_Port;
+    button2.gpioPin = Button2_Pin;
+    button3.gpioPort = Button3_GPIO_Port;
+    button3.gpioPin = Button3_Pin;
 
     //Limit switch located on each individual climbing leg
     //Initialize member
@@ -484,59 +515,36 @@ void Task_Sensor(void *param) {
     backLS2.gpioPort = LimitSW4_GPIO_Port;
     backLS2.gpioPin = LimitSW4_Pin;
 
-    //Initialize climbing encoder sensor and start front distance sensor data reception
-    ENCODER_Init();
-//    HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
-
-    //    //Reset encoder position
-    //    ENCODER_Set_ZeroPosition(&encoderBack);
-    //    ENCODER_Set_ZeroPosition(&encoderFront);
-
-    /*
-     * Navigation
-     * -Encoder
-     * 	To keep track of wheel velocity
-     */
-
-    //Initialize encoder sensor for base wheel
-    BRITER_RS485_Init(&(base_encoder[0]), 0x02, &huart4);
-    BRITER_RS485_Init(&(base_encoder[1]), 0x01, &huart4);
-    //Flag to alternate the address of rs485 tx to avoid congestion
-    uint8_t base_encoder_tx_flag = 0;
-
-    uint32_t mpu_error_count = 0;
-    uint32_t state_count = xTaskGetTickCount();
-
-    while (MPU6050_Init(&hi2c1) != HAL_OK)
-    {
-	if (xTaskGetTickCount() - state_count > 50)
-	    if(MPU6050_I2C_Reset(&hi2c1) == HAL_ERROR){
-		Error_Handler();
-	    }
-    }
-
-//    MPU6050_Calculate_Error(&hi2c1, &MPU6050);
-
-    //Only start all operation after sensor are turned on.
-    xTaskNotify( task_climbing, 0, eNoAction );
-
-    //Ensure periodic execution
-    const TickType_t period = pdMS_TO_TICKS(10);
+    TickType_t tick = xTaskGetTickCount();
+    const TickType_t period = pdMS_TO_TICKS(100); //execution period
     while (1) {
-	//******************************************************************************
-	/*Climbing Sensor Data Acquisition and Processing*/
-	/*Data Acquisition*/
-	//Read encoder data
+	//Button user interface
+	Button_FilteredInput(&button1, 30);
+	Button_FilteredInput(&button2, 30);
+	Button_FilteredInput(&button3, 30);
 
-	ENCODER_Get_Angle(&encoderBack);
-	ENCODER_Get_Angle(&encoderFront);
+	button_state.button1 = (button1.state == 1) ? 1 : 0;
+	button_state.button2 = (button2.state == 1) ? 1 : 0;
+	button_state.button3 = (button3.state == 1) ? 1 : 0;
+
+	//Use button 1 to get out of STOP mode and enter into curb detected
+	//Where the system is only allowed to move backward
+	if (button_state.button1 == 1 && lifting_mode == STOP) {
+	    lifting_mode = CURB_DETECTED;
+	    xTaskNotify(task_normalDrive, 0, eNoAction);
+	}
+	//Use button 2 to get out of STOP mode and enter into curb detected
+	//Where the system is only allowed to move backward
+	if (button_state.button2 == 1) {
+	    lifting_mode = DANGER;
+	    xTaskNotify(task_control, 0, eNoAction);
+	}
 
 	//Read limit switch state
 	Button_FilteredInput(&rearLS1, 5);
 	Button_FilteredInput(&rearLS2, 5);
 	Button_FilteredInput(&backLS1, 5);
 	Button_FilteredInput(&backLS2, 5);
-
 	/*Data Processing*/
 	//TODO: What if leg is suspended on the air, touchdown will turn back to 0 and cause the leg to continue landing
 	//If both front LS is touched, store in touchdown (use to tell front leg are both in contact with ground)
@@ -551,189 +559,41 @@ void Task_Sensor(void *param) {
 	else
 	    touch_down[BACK_INDEX] = 0;
 
-	/*Error Handling*/
-	//If encoder is faulty, no data reception, suspend all task
-	if ((xTaskGetTickCount() - last_can_rx_t[0]) > 1000 || (xTaskGetTickCount() - last_can_rx_t[1]) > 1000) {
-	    lifting_mode = DANGER;
-	    xTaskNotify(task_control, 0, eNoAction);
-	}
+	vTaskDelayUntil(&tick, period);
+    }
+}
 
-	//******************************************************************************
-	/*Navigation sensor data acquisition*/
-	/*Data Acquisition*/
-	HAL_StatusTypeDef briter_dma_status;
-	if (base_encoder_tx_flag % 2 == 0) {
-	    briter_dma_status = BRITER_RS485_GetValue_DMA_TX(&base_encoder[0]);
-	    base_encoder_tx_flag ++;
-	}else
-	{
-	    BRITER_RS485_GetValue_DMA_TX(&base_encoder[1]);
-	    base_encoder_tx_flag --;
-	}
-	if (briter_dma_status == HAL_OK)
-	       BRITER_RS485_GetValue_DMA_RX(base_encoder);
-	//This delay is important for the task to behave properly
-	//Issue not yet found
-	vTaskDelay(1);
+void Task_IMU(void *param) {
+    uint32_t mpu_error_count = 0;
+    uint32_t state_count = xTaskGetTickCount();
 
-	/*Error Handling*/
-	//If encoder is faulty, no data reception, suspend all task
-	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 1000 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 1000) {
-	    lifting_mode = DANGER;
-	    xTaskNotify(task_control, 0, eNoAction);
-	}
-	//******************************************************************************
-	/*Common Sensor*/
-	//Distance sensor data acquisition is managed by DMA
-//	HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
-//	//Error Handling
-//	//UART error cause by noise flag, framing, overrun error happens during multibuffer dma communication
-//	if (xTaskGetTickCount() - last_tf_mini_t > 500) {
-//	    lifting_mode = DANGER;
-//	    xTaskNotify(task_control, 0, eNoAction);
-//	}
-
+    while (MPU6050_Init(&hi2c1) != HAL_OK) {
+	if (xTaskGetTickCount() - state_count > 50)
+	    if (MPU6050_I2C_Reset(&hi2c1) == HAL_ERROR) {
+		Error_Handler();
+	    }
+    }
+    while (1) {
 	//Sensor acquisition of IMU
-	mpu_error_count = (MPU6050_Read_All(&hi2c1, &MPU6050) == HAL_OK)? 0: ++mpu_error_count;
+	if (MPU6050_Read_All(&hi2c1, &MPU6050) == HAL_OK) {
+	    mpu_error_count = 0;
+	}
+	else {
+	    mpu_error_count++;
+	}
+	if (mpu_error_count > 10) {
+	    MPU6050_I2C_Reset(&hi2c1);
+	    MPU6050_Init(&hi2c1);
+	}
 
-	if(mpu_error_count > 50){
+	if (mpu_error_count > 20) {
 	    lifting_mode = DANGER;
 	    xTaskNotify(task_control, 0, eNoAction);;
 	}
 
-	vTaskDelay(period);
+	vTaskDelay(10);
     }
 }
-
-void Task_Wheel_Encoder(void* param){
-    //Initialize encoder sensor for base wheel
-    BRITER_RS485_Init(&(base_encoder[0]), 0x02, &huart4);
-    BRITER_RS485_Init(&(base_encoder[1]), 0x01, &huart4);
-    //Flag to alternate the address of rs485 tx to avoid congestion
-    uint8_t base_encoder_tx_flag = 0;
-    while(1){
-	/*Data Acquisition*/
-	HAL_StatusTypeDef briter_dma_status;
-	if (base_encoder_tx_flag % 2 == 0) {
-	    briter_dma_status = BRITER_RS485_GetValue_DMA_TX(&base_encoder[0]);
-	    base_encoder_tx_flag ++;
-	}else
-	{
-	    BRITER_RS485_GetValue_DMA_TX(&base_encoder[1]);
-	    base_encoder_tx_flag --;
-	}
-	if (briter_dma_status == HAL_OK)
-	       BRITER_RS485_GetValue_DMA_RX(base_encoder);
-
-	/*Error Handling*/
-	//If encoder is faulty, no data reception, suspend all task
-	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 1000 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 1000) {
-	    lifting_mode = DANGER;
-	    xTaskNotify(task_control, 0, eNoAction);
-
-	vTaskDelay(1);
-	}
-    }
-}
-
-void Task_Curb_Detector(void* param){
-    while(1){
-	//Distance sensor data acquisition is managed by DMA
-	HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
-	//Error Handling
-	//UART error cause by noise flag, framing, overrun error happens during multibuffer dma communication
-	if (xTaskGetTickCount() - last_tf_mini_t > 500) {
-	    lifting_mode = DANGER;
-	    xTaskNotify(task_control, 0, eNoAction);
-	}
-	vTaskDelay(1);
-    }
-}
-
-void Task_Climb_Encoder(void* param){
-	//Initialize climbing encoder sensor and start front distance sensor data reception
-	ENCODER_Init();
-	while(1){
-		/*Climbing Sensor Data Acquisition and Processing*/
-		/*Data Acquisition*/
-		//Read encoder data
-
-		ENCODER_Get_Angle(&encoderBack);
-		ENCODER_Get_Angle(&encoderFront);
-
-		/*Error Handling*/
-		//If encoder is faulty, no data reception, suspend all task
-		if ((xTaskGetTickCount() - last_can_rx_t[0]) > 1000 || (xTaskGetTickCount() - last_can_rx_t[1]) > 1000) {
-			lifting_mode = DANGER;
-			xTaskNotify(task_control, 0, eNoAction);
-		}
-	}
-}
-
-void Task_Climb_Switches(void* param){
-    //Limit switch located on each individual climbing leg
-    //Initialize member
-    Button_TypeDef rearLS1 = {
-	0
-    }, rearLS2 = {
-	0
-    }, backLS1 = {
-	0
-    }, backLS2 = {
-	0
-    };
-    rearLS1.gpioPort = LimitSW1_GPIO_Port;
-    rearLS1.gpioPin = LimitSW1_Pin;
-    rearLS2.gpioPort = LimitSW2_GPIO_Port;
-    rearLS2.gpioPin = LimitSW2_Pin;
-    backLS1.gpioPort = LimitSW3_GPIO_Port;
-    backLS1.gpioPin = LimitSW3_Pin;
-    backLS2.gpioPort = LimitSW4_GPIO_Port;
-    backLS2.gpioPin = LimitSW4_Pin;
-
-    while(1){
-	//Read limit switch state
-	Button_FilteredInput(&rearLS1, 5);
-	Button_FilteredInput(&rearLS2, 5);
-	Button_FilteredInput(&backLS1, 5);
-	Button_FilteredInput(&backLS2, 5);
-	vTaskDelay(1);
-    }
-}
-
-void Task_IMU(void* param){
-	uint32_t mpu_error_count = 0;
-	uint32_t state_count = xTaskGetTickCount();
-
-	while (MPU6050_Init(&hi2c1) != HAL_OK)
-	{
-	if (xTaskGetTickCount() - state_count > 50)
-		if(MPU6050_I2C_Reset(&hi2c1) == HAL_ERROR){
-		Error_Handler();
-		}
-	}
-	while(1){
-		//Sensor acquisition of IMU
-		if(MPU6050_Read_All(&hi2c1, &MPU6050) == HAL_OK){
-			mpu_error_count = 0;
-		}else{
-			mpu_error_count++;
-		}
-
-		if(MPU6050_I2C_Reset(&hi2c1) == HAL_ERROR){
-			mpu_error_count++;
-		}else{
-			mpu_error_count = 0;
-		}
-
-		if(mpu_error_count > 50){
-			lifting_mode = DANGER;
-			xTaskNotify(task_control, 0, eNoAction);;
-		}
-
-	}
-}
-
 
 /**
  * Joystick interface
@@ -742,7 +602,6 @@ void Task_IMU(void* param){
 void Task_Joystick(void *param) {
 
     //Warning: Period cannot be shorter than 100
-    TickType_t tick = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(100); //execution period
 
     JoystickHandle joystick_handler;
@@ -754,16 +613,13 @@ void Task_Joystick(void *param) {
 	ADC_DataRequest();
 	//Use mutex to safeguard joystick data being accessed and modified by task_normal_drive
 	if (xSemaphoreTake(mutex_joystick, pdMS_TO_TICKS(5)) == pdTRUE) {
-	    if(xTaskNotifyWait(0x00, ULONG_MAX, 0, 50) == pdTRUE){
+	    if (xTaskNotifyWait(0x00, ULONG_MAX, 0, 50) == pdTRUE) {
 		int16_t adc_rawData[8];
 		ADC_Read(adc_rawData);
 		joystick_handler.x = adc_rawData[2];
 		joystick_handler.y = adc_rawData[1];
 		Joystick_CalculatePos(&joystick_handler);
 	    }
-//	    if (xQueueReceive(queue_joystick_raw, &(joystick_handler), 50) == pdPASS) {
-//		Joystick_CalculatePos(&joystick_handler);
-//	    }
 	    else {
 		//If no data is available, force reading to zero
 		joystick_handler.x = 0;
@@ -807,7 +663,7 @@ void Task_Climbing(void *param) {
     runMotor(&backMotor, 0);
     emBrakeMotor(0);
 
-    xTaskNotifyWait(0x00, ULONG_MAX, (uint32_t*)0, portMAX_DELAY);
+    xTaskNotifyWait(0x00, ULONG_MAX, (uint32_t*) 0, portMAX_DELAY);
     while (1) {
 #ifdef BUTTON_CONTROL
 	/*Button Control*/
@@ -1030,6 +886,8 @@ void Task_Climbing(void *param) {
 }
 
 void Task_USB(void *param) {
+    /* init code for USB_DEVICE */
+    MX_USB_DEVICE_Init();
 #ifdef DATA_LOGGING
     DataLogger_Init(&datalog_msg);
 #endif
@@ -1053,16 +911,16 @@ void Task_USB(void *param) {
 	/*============================================================================*/
 
     	//Define variable
-    	LOG_left_enc.data = base_encoder[LEFT_INDEX].encoder_value;
-    	LOG_right_enc.data = base_encoder[RIGHT_INDEX].encoder_value;
-    	LOG_left_enc_vel.data = base_velocity[LEFT_INDEX].angular_velocity;
-    	LOG_right_enc_vel.data = base_velocity[RIGHT_INDEX].angular_velocity;
-//	LOG_left_pwm.data = 0.54321;
-//	LOG_right_pwm.data = 0.56789;
-//	LOG_left_enc.data = 0x12345670;
-//	LOG_right_enc.data = 0x89ABCDEF;
-//	LOG_left_enc_vel.data = 0.12345;
-//	LOG_right_enc_vel.data = 0.67890;
+//    	LOG_left_enc.data = base_encoder[LEFT_INDEX].encoder_value;
+//    	LOG_right_enc.data = base_encoder[RIGHT_INDEX].encoder_value;
+//    	LOG_left_enc_vel.data = base_velocity[LEFT_INDEX].angular_velocity;
+//    	LOG_right_enc_vel.data = base_velocity[RIGHT_INDEX].angular_velocity;
+	LOG_left_pwm.data = 0.54321;
+	LOG_right_pwm.data = 0.56789;
+	LOG_left_enc.data = 0x12345670;
+	LOG_right_enc.data = 0x89ABCDEF;
+	LOG_left_enc_vel.data = 0.12345;
+	LOG_right_enc_vel.data = 0.67890;
     	LOG_tick.data = xTaskGetTickCount();
 
     	DataLogger_AddMessage(&datalog_msg, LOG_battery.array, sizeof(LOG_battery.array));
@@ -1112,26 +970,26 @@ void Task_Battery(void *param) {
 	if (Battery_GetState(&battery) != HAL_OK) {
 	    error_count++;
 	}
-	else{
+	else {
 	    voltage_level = battery.battery_info.total_voltage;
 	    error_count = 0;
 	}
 
-	if(uxQueueSpacesAvailable(queue_battery_level) == 0){
+	if (uxQueueSpacesAvailable(queue_battery_level) == 0) {
 	    //force the top message out
 	    uint8_t dummy;
 	    xQueueReceive(queue_battery_level, &dummy, 0);
 	}
-	xQueueSend(queue_battery_level, (void*)&voltage_level, 0);
+	xQueueSend(queue_battery_level, (void* )&voltage_level, 0);
 #ifdef DATA_LOGGING
 	LOG_battery.data = voltage_level;
 #endif
 	vTaskDelay(pdMS_TO_TICKS(10000));
 	//Error Handling
-	if(error_count > 50){
+	if (error_count > 50) {
 	    //Cannot read from BMS
 	    uint8_t dummy;
-	    (void)dummy;
+	    (void) dummy;
 	}
     }
 }
@@ -1165,7 +1023,7 @@ static void LED_Mode_Configuration(Operation_Mode mode) {
  * @param  dist Distance to be moved by hub motor
  * @retval True if climb forward the specified distance.
  */
-static bool climbingForward(float dist){
+static bool climbingForward(float dist) {
     static uint32_t prev_tick = 0;
     static int32_t prev_enc;
     static bool first_loop = true;

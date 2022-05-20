@@ -117,11 +117,7 @@ const osThreadAttr_t defaultTask_attributes = {
 
 /* Task Handler */
 TaskHandle_t task_control;
-TaskHandle_t task_keyboard;
 TaskHandle_t task_normalDrive;
-TaskHandle_t task_climb_sensor;
-TaskHandle_t task_sensor;
-TaskHandle_t task_navigation_sensor;
 TaskHandle_t task_joystick;
 TaskHandle_t task_climbing;
 TaskHandle_t task_usb;
@@ -130,7 +126,7 @@ TaskHandle_t task_climb_encoder;
 TaskHandle_t task_imu;
 TaskHandle_t task_wheel_encoder;
 TaskHandle_t task_curb_detector;
-TaskHandle_t task_climb_switches;
+TaskHandle_t task_switches;
 
 
 QueueHandle_t queue_joystick_raw;
@@ -280,19 +276,15 @@ int main(void) {
 
     /* Create the thread(s) */
     /* creation of defaultTask */
-    defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+//    defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
     /* USER CODE BEGIN RTOS_THREADS */
     /* add threads, ... */
-    status = xTaskCreate(Task_Control, "Control Task", 250, NULL, 2, &task_control);
-    configASSERT(status == pdPASS);
-    status = xTaskCreate(Task_Keyboard, "Keyboard Task", 250, NULL, 2, &task_keyboard);
+    status = xTaskCreate(Task_Control, "Control Task", 250, NULL, 5, &task_control);
     configASSERT(status == pdPASS);
     status = xTaskCreate(Task_Climbing, "Climbing Task", 250, NULL, 2, &task_climbing);
     configASSERT(status == pdPASS);
     status = xTaskCreate(Task_Joystick, "Joystick Task", 250, NULL, 2, &task_joystick);
-    configASSERT(status == pdPASS);
-    status = xTaskCreate(Task_Sensor, "Sensor Task", 400, NULL, 2, &task_sensor);
     configASSERT(status == pdPASS);
     status = xTaskCreate(Task_NormalDrive, "Normal Drive Task", 250, NULL, 2, &task_normalDrive);
     configASSERT(status == pdPASS);
@@ -308,7 +300,7 @@ int main(void) {
     configASSERT(status == pdPASS);
     status = xTaskCreate(Task_Curb_Detector, "Curb Detector Task", 250, NULL, 2, &task_curb_detector);
     configASSERT(status == pdPASS);
-    status = xTaskCreate(Task_Climb_Switches, "Climb Switches Task", 250, NULL, 2, &task_climb_switches);
+    status = xTaskCreate(Task_Switches, "Switches Task", 250, NULL, 2, &task_switches);
     configASSERT(status == pdPASS);
     /* USER CODE END RTOS_THREADS */
 
@@ -453,23 +445,17 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 //RS485 Briter encoder callback
     if (huart->Instance == UART4) {
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	uint32_t retval;
 	uint8_t address = BRITER_RS485_GetAddress_DMA_Callback(RS485_Enc_RX_buf);
 	if (address == base_encoder[LEFT_INDEX].addr) {
-	    uint32_t retval = BRITER_RS485_GetValue_DMA_Callback(&base_encoder[LEFT_INDEX], RS485_Enc_RX_buf);
-	    if (retval != BRITER_RS485_ERROR) {
-		base_encoder[LEFT_INDEX].encoder_value = retval;
-		calculateVelocity(&base_velocity[LEFT_INDEX], base_encoder[LEFT_INDEX].encoder_value);
-		last_rs485_enc_t[LEFT_INDEX] = xTaskGetTickCount();
-	    }
+	    retval = BRITER_RS485_GetValue_DMA_Callback(&base_encoder[LEFT_INDEX], RS485_Enc_RX_buf);
 	}
 	else if (address == base_encoder[RIGHT_INDEX].addr) {
-	    uint32_t retval = BRITER_RS485_GetValue_DMA_Callback(&base_encoder[RIGHT_INDEX], RS485_Enc_RX_buf);
-	    if (retval != BRITER_RS485_ERROR) {
-		base_encoder[RIGHT_INDEX].encoder_value = retval;
-		calculateVelocity(&base_velocity[RIGHT_INDEX], base_encoder[RIGHT_INDEX].encoder_value);
-		last_rs485_enc_t[RIGHT_INDEX] = xTaskGetTickCount();
-	    }
+	    retval = BRITER_RS485_GetValue_DMA_Callback(&base_encoder[RIGHT_INDEX], RS485_Enc_RX_buf);
 	}
+	xTaskNotifyFromISR(task_wheel_encoder, retval, eSetValueWithOverwrite, &xHigherPriorityTaskWoken);
+	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 	return;
     }
 
@@ -601,8 +587,7 @@ void Buzzer_Timer_Callback(TimerHandle_t xTimer) {
  */
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument) {
-    /* init code for USB_DEVICE */
-    MX_USB_DEVICE_Init();
+
     /* USER CODE BEGIN 5 */
 //    uint32_t state_count = xTaskGetTickCount();
 //    while (MPU6050_Init(&hi2c1) != 0)
