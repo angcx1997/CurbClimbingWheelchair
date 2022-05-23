@@ -70,12 +70,14 @@ typedef struct {
     uint8_t button3 :1;
 } button_state_t;
 
-typedef enum{
-    SENSOR_FAULT_WHEEL_ENCODER = 0x00,
-    SENSOR_FAULT_CURB_DETECTOR,
-    SENSOR_FAULT_CLIMB_ENCODER,
-    SENSOR_FAULT_IMU
-}sensor_fault_e;
+typedef enum {
+    ERROR_WHEEL_ENCODER = 0x00,
+    ERROR_CURB_DETECTOR,
+    ERROR_CLIMB_ENCODER,
+    ERROR_IMU,
+    ERROR_HUB_MOTOR
+
+} sensor_fault_e;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -206,6 +208,7 @@ uint8_t finish_climbing_flag = 0; //1 if climbing motion finish
 uint8_t usb_climb_state = 0;
 
 //Base wheel control
+Sabertooth_Handler sabertooth_handler;
 extern Briter_Encoder_t base_encoder[2];
 Debug_Tick_t encoder_tick_taken = {
 	0
@@ -214,9 +217,9 @@ Debug_Tick_t encoder_tick_taken = {
 extern wheel_velocity_t base_velocity[2];
 
 MPU6050_t MPU6050;
-  #ifdef DATA_LOGGING
-    //Declare variable
-    //System ID logging
+#ifdef DATA_LOGGING
+//Declare variable
+//System ID logging
 //    volatile uint16_byte_u LOG_battery;
 //    volatile float_byte_u LOG_left_pwm;
 //    volatile float_byte_u LOG_right_pwm;
@@ -224,18 +227,40 @@ MPU6050_t MPU6050;
 //    volatile uint32_byte_u LOG_right_enc;
 //    volatile float_byte_u LOG_left_enc_vel;
 //    volatile float_byte_u LOG_right_enc_vel;
-    //PID Tracking Logging
-    volatile float_byte_u LOG_left_ref_vel;
-    volatile float_byte_u LOG_right_ref_vel;
-    volatile float_byte_u LOG_left_enc_vel;
-    volatile float_byte_u LOG_right_enc_vel;
-    volatile uint32_byte_u LOG_tick;
+//PID Tracking Logging
+volatile float_byte_u LOG_left_ref_vel;
+volatile float_byte_u LOG_right_ref_vel;
+volatile float_byte_u LOG_left_enc_vel;
+volatile float_byte_u LOG_right_enc_vel;
+volatile uint32_byte_u LOG_tick;
 //    volatile uint32_t tick_count = 0;
-    DataLogger_Msg_t datalog_msg;
-    uint8_t usbBuffer[64];
-    float v = 0.5;
+DataLogger_Msg_t datalog_msg;
+uint8_t usbBuffer[64];
+float v = 0.5;
 #endif
-    volatile uint32_t tick_count = 0;
+volatile uint32_t tick_count = 0;
+
+//Battery level
+uint32_t battery_level = 25;
+
+//Speed PID Controller for 2 wheel
+PID_Struct base_pid[2];
+const float base_kp[2] = {
+	0.51588, 0.51588
+}; /*!< Proportional constant in both left and right wheel PID */
+const float base_ki[2] = {
+	103.1758, 103.9472
+}; /*!< Integral constant in both left and right wheel PID */
+const float kd[2] = {
+	0.0, 0.0
+}; /*!< Derivative constant in both left and right wheel PID */
+const float kf[2] = {
+	12.48577, 12.51787
+}; /*!< Feedforward constant in both left and right wheel PID */
+float pwm_volt[2]; /*!< PWM voltage to be input into motor */
+float reference_vel[2]; /*!< Setpoint for PID controller */
+float max_i_output = 20; /*!< To clamp integral output */
+float pid_freq = 1000;
 /* USER CODE END Variables */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -244,6 +269,8 @@ static void LED_Mode_Configuration(Operation_Mode mode);
 static bool climbingForward(float dist); //return true if in the process of moving forward
 static bool goto_pos(int enc, PID_t pid_t); //return true if still in the process of reaching the position
 static bool in_climb_process(int front_enc, int back_enc);
+static void base_velocity_controller(float left_vel, float right_vel, PID_Struct *pid_left, PID_Struct *pid_right);
+static bool move_forward(float dist_desired);
 /* USER CODE END FunctionPrototypes */
 
 /* Private application code --------------------------------------------------*/
@@ -273,7 +300,7 @@ void Task_NormalDrive(void *param) {
      */
     differentialDrive_Handler differential_drive_handler;
     Gear_Level gear_level = GEAR1; //change the speed level if need higher speed
-    Sabertooth_Handler sabertooth_handler;
+
     //declare a struct to hold linear and angular velocity
     struct Command_Velocity {
 	float linear;
@@ -296,44 +323,21 @@ void Task_NormalDrive(void *param) {
     //Battery level
     uint16_t voltage_level = 25;
 
-    /*
-     * Speed PID Controller for 2 wheel
-     */
-    PID_Struct pid[2];
-    const float p[2] = {
-	    //	17.7, 13.97
-	    0.51588, 0.51588
-//	    0,0
-    }; /*!< Proportional constant in both left and right wheel PID */
-    const float i[2] = {
-	    103.1758, 103.9472
-    }; /*!< Integral constant in both left and right wheel PID */
-    const float d[2] = {
-	    0.0, 0.0
-    }; /*!< Derivative constant in both left and right wheel PID */
-    const float f[2] = {
-	    12.5, 12.5
-    }; /*!< Feedforward constant in both left and right wheel PID */
-    float pwm_volt[2]; /*!< PWM voltage to be input into motor */
-    float reference_vel[2]; /*!< Setpoint for PID controller */
-    float max_i_output = 20; /*!< To clamp integral output */
-    float pid_freq = 1000;
-
     //Setup right wheel PID
-    PID_Init(&pid[RIGHT_INDEX]);
-    PID_setPIDF(&pid[RIGHT_INDEX], p[RIGHT_INDEX], i[RIGHT_INDEX], d[RIGHT_INDEX], f[RIGHT_INDEX]);
-    PID_setOutputLimits(&pid[RIGHT_INDEX], -20, 20);
-    PID_setMaxIOutput(&pid[RIGHT_INDEX], 20);
-    PID_setMinIOutput(&pid[RIGHT_INDEX], -20);
-    PID_setFrequency(&pid[RIGHT_INDEX], pid_freq);
+    PID_Init(&base_pid[RIGHT_INDEX]);
+    PID_setPIDF(&base_pid[RIGHT_INDEX], base_kp[RIGHT_INDEX], base_ki[RIGHT_INDEX], kd[RIGHT_INDEX], kf[RIGHT_INDEX]);
+    PID_setOutputLimits(&base_pid[RIGHT_INDEX], -max_i_output, max_i_output);
+    PID_setMaxIOutput(&base_pid[RIGHT_INDEX], max_i_output);
+    PID_setMinIOutput(&base_pid[RIGHT_INDEX], -max_i_output);
+    PID_setFrequency(&base_pid[RIGHT_INDEX], pid_freq);
 
     //Setup left wheel PID
-    PID_Init(&pid[LEFT_INDEX]);
-    PID_setPIDF(&pid[LEFT_INDEX], p[LEFT_INDEX], i[LEFT_INDEX], d[LEFT_INDEX], f[LEFT_INDEX]);
-    PID_setOutputLimits(&pid[LEFT_INDEX], -20, 20);
-    PID_setMaxIOutput(&pid[LEFT_INDEX], 20);
-    PID_setMinIOutput(&pid[LEFT_INDEX], -20);
-    PID_setFrequency(&pid[LEFT_INDEX], pid_freq);
+    PID_Init(&base_pid[LEFT_INDEX]);
+    PID_setPIDF(&base_pid[LEFT_INDEX], base_kp[LEFT_INDEX], base_ki[LEFT_INDEX], kd[LEFT_INDEX], kf[LEFT_INDEX]);
+    PID_setOutputLimits(&base_pid[LEFT_INDEX], -max_i_output, max_i_output);
+    PID_setMaxIOutput(&base_pid[LEFT_INDEX], max_i_output);
+    PID_setMinIOutput(&base_pid[LEFT_INDEX], -max_i_output);
+    PID_setFrequency(&base_pid[LEFT_INDEX], pid_freq);
 
     while (1) {
 	if (lifting_mode == NORMAL) {
@@ -392,47 +396,24 @@ void Task_NormalDrive(void *param) {
 	    xQueueReceive(queue_battery_level, &voltage_level, 0);
 	    voltage_level /= 100;
 	}
-	else{
+	else {
 	    voltage_level = 25;
 	}
 
 //	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
 //	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 
-
 	//TODO: Add PID controller here
 	//generate sine wave
 	uint16_t sampling_rate = 1000;
 	tick_count++;
-	float v = 0.75 * sin(2 * M_PI * tick_count/sampling_rate);
-	reference_vel[LEFT_INDEX] = v;
-	reference_vel[RIGHT_INDEX] = v;
-	if (fabs(reference_vel[LEFT_INDEX]) == 0 && fabs(base_velocity[LEFT_INDEX].velocity) < 0.05) {
-	    //Reset PID if it is too small
-	    pwm_volt[LEFT_INDEX] = 0;
-	    PID_reset(&pid[LEFT_INDEX]);
-	}
-	else {
-	    pwm_volt[LEFT_INDEX] = PID_getOutput(&pid[LEFT_INDEX], base_velocity[LEFT_INDEX].velocity, reference_vel[LEFT_INDEX]);
-	}
-
-	if (fabs(reference_vel[RIGHT_INDEX]) == 0 && fabs(base_velocity[RIGHT_INDEX].velocity) < 0.05) {
-	    pwm_volt[RIGHT_INDEX] = 0;
-	    PID_reset(&pid[RIGHT_INDEX]);
-	}
-	else {
-	    pwm_volt[RIGHT_INDEX] = PID_getOutput(&pid[RIGHT_INDEX], base_velocity[RIGHT_INDEX].velocity, reference_vel[RIGHT_INDEX]);
-	}
-	motor_output_1 = (float)(pwm_volt[LEFT_INDEX]/voltage_level) * SABERTOOTH_MAX_ALLOWABLE_VALUE;
-	motor_output_2 = (float)(pwm_volt[RIGHT_INDEX]/voltage_level)  * SABERTOOTH_MAX_ALLOWABLE_VALUE;
-	MotorThrottle(&sabertooth_handler, TARGET_2, motor_output_1);
-	MotorThrottle(&sabertooth_handler, TARGET_1, motor_output_2);
+	float v = 0.75 * sin(2 * M_PI * tick_count / sampling_rate);
+	base_velocity_controller(v, v, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
 
 	LOG_left_ref_vel.data = reference_vel[LEFT_INDEX];
 	LOG_right_ref_vel.data = reference_vel[RIGHT_INDEX];
 	LOG_left_enc_vel.data = base_velocity[LEFT_INDEX].velocity;
 	LOG_right_enc_vel.data = base_velocity[RIGHT_INDEX].velocity;
-
 
 #ifdef DATA_xxxLOGGING
 	/*============================================================================*/
@@ -508,8 +489,8 @@ void Task_Wheel_Encoder(void *param) {
 		    base_encoder[LEFT_INDEX].encoder_value = irq_retval;
 		    calculateVelocity(&base_velocity[LEFT_INDEX], base_encoder[LEFT_INDEX].encoder_value);
 		    //Data smoothening
-		    base_velocity[LEFT_INDEX].velocity = base_velocity[LEFT_INDEX].velocity
-			    * velocity_filter + (1 - velocity_filter) * prev_velocity[LEFT_INDEX];
+		    base_velocity[LEFT_INDEX].velocity = base_velocity[LEFT_INDEX].velocity * velocity_filter
+			    + (1 - velocity_filter) * prev_velocity[LEFT_INDEX];
 		    prev_velocity[LEFT_INDEX] = base_velocity[LEFT_INDEX].velocity;
 		    last_rs485_enc_t[LEFT_INDEX] = xTaskGetTickCount();
 		    base_encoder_tx_flag++;
@@ -519,8 +500,8 @@ void Task_Wheel_Encoder(void *param) {
 		    calculateVelocity(&base_velocity[RIGHT_INDEX], base_encoder[RIGHT_INDEX].encoder_value);
 		    last_rs485_enc_t[RIGHT_INDEX] = xTaskGetTickCount();
 		    //Data smoothening
-		    base_velocity[RIGHT_INDEX].velocity = base_velocity[RIGHT_INDEX].velocity
-			    * velocity_filter + (1 - velocity_filter) * prev_velocity[RIGHT_INDEX];
+		    base_velocity[RIGHT_INDEX].velocity = base_velocity[RIGHT_INDEX].velocity * velocity_filter
+			    + (1 - velocity_filter) * prev_velocity[RIGHT_INDEX];
 		    prev_velocity[RIGHT_INDEX] = base_velocity[RIGHT_INDEX].velocity;
 		    base_encoder_tx_flag--;
 		}
@@ -533,7 +514,7 @@ void Task_Wheel_Encoder(void *param) {
 	//If encoder is faulty, no data reception, suspend all task
 	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 1000 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 1000) {
 	    lifting_mode = DANGER;
-	    xTaskNotify(task_control, SENSOR_FAULT_WHEEL_ENCODER, eSetValueWithOverwrite);
+	    xTaskNotify(task_control, ERROR_WHEEL_ENCODER, eSetValueWithOverwrite);
 	}
 	vTaskDelayUntil(&tick, period);
     }
@@ -547,7 +528,7 @@ void Task_Curb_Detector(void *param) {
 	//UART error cause by noise flag, framing, overrun error happens during multibuffer dma communication
 	if (xTaskGetTickCount() - last_tf_mini_t > 500) {
 	    lifting_mode = DANGER;
-	    xTaskNotify(task_control, SENSOR_FAULT_CURB_DETECTOR, eSetValueWithOverwrite);
+	    xTaskNotify(task_control, ERROR_CURB_DETECTOR, eSetValueWithOverwrite);
 	}
 	vTaskDelay(5);
     }
@@ -571,7 +552,7 @@ void Task_Climb_Encoder(void *param) {
 	//If encoder is faulty, no data reception, suspend all task
 //	if ((xTaskGetTickCount() - last_can_rx_t[0]) > 1000 || (xTaskGetTickCount() - last_can_rx_t[1]) > 1000) {
 //	    lifting_mode = DANGER;
-//	    xTaskNotify(task_control, SENSOR_FAULT_CLIMB_ENCODER, eSetValueWithOverwrite);
+//	    xTaskNotify(task_control, ERROR_CLIMB_ENCODER, eSetValueWithOverwrite);
 //	}
 	vTaskDelay(10);
     }
@@ -691,7 +672,7 @@ void Task_IMU(void *param) {
 
 //	if ((xTaskGetTickCount() - last_can_rx_t[0]) > 1000 || (xTaskGetTickCount() - last_can_rx_t[1]) > 1000) {
 //	    lifting_mode = DANGER;
-//	    xTaskNotify(task_control, SENSOR_FAULT_CLIMB_ENCODER, eSetValueWithOverwrite);
+//	    xTaskNotify(task_control, ERROR_CLIMB_ENCODER, eSetValueWithOverwrite);
 //	}
 	vTaskDelay(10);
     }
@@ -995,7 +976,7 @@ void Task_USB(void *param) {
 #endif
     while (1) {
 #ifdef DATA_LOGGING
-    	//Define variable
+	//Define variable
 //    	LOG_left_enc.data = base_encoder[LEFT_INDEX].encoder_value;
 //    	LOG_right_enc.data = base_encoder[RIGHT_INDEX].encoder_value;
 //    	LOG_left_enc_vel.data = base_velocity[LEFT_INDEX].velocity;
@@ -1054,7 +1035,7 @@ void Task_Battery(void *param) {
 
     Battery_Init(&battery, &huart2);
     uint8_t error_count = 0;
-    uint16_t voltage_level = 25; //nominal voltage
+    uint16_t voltage_level = 2500; //nominal voltage
 
     while (1) {
 	//Data acquisition from BMS
@@ -1071,7 +1052,8 @@ void Task_Battery(void *param) {
 	    uint8_t dummy;
 	    xQueueReceive(queue_battery_level, &dummy, 0);
 	}
-	xQueueSend(queue_battery_level,(void* )&voltage_level, 0);
+	xQueueSend(queue_battery_level, (void* )&voltage_level, 0);
+	battery_level = voltage_level / 100;
 	vTaskDelay(pdMS_TO_TICKS(10000));
 	//Error Handling
 	if (error_count > 50) {
@@ -1130,7 +1112,7 @@ static bool climbingForward(float dist) {
     //Sometime, the connector is loose and cause error in transmission
     if (xTaskGetTickCount() - last_hub_rx_t > 1500) {
 	lifting_mode = DANGER;
-	xTaskNotify(task_control, 0, eNoAction);
+	xTaskNotify(task_control, ERROR_HUB_MOTOR, eSetValueWithOverwrite);
 	return false;
     }
 
@@ -1149,6 +1131,61 @@ static bool climbingForward(float dist) {
     else {
 	first_loop = true;
 	hub_motor_status = HubMotor_SendCommand(0, 0);
+	return false;
+    }
+}
+
+/**@brief  Base motor move forward  by preset dist.
+ * @param  dist Distance to be moved by base wheel
+ * @retval True if move forward the specified distance.
+ */
+static bool move_forward(float dist_desired) {
+    static int32_t prev_enc[2];
+    static bool first_loop = true;
+    static float dist_travelled;
+    static PID_t moveforward_pid = NULL;
+    static struct pid_controller moveforward_ctrl;
+    float moveforward_input = 0, moveforward_output = 0;
+    float moveforward_setpoint = 0;
+    float moveforward_kp = 0.35, moveforward_ki = 0.003, moveforward_kd = 0.00001;
+
+    if(moveforward_pid == NULL){
+	moveforward_pid = pid_create(&moveforward_ctrl, &moveforward_input, &moveforward_output, &moveforward_setpoint,
+		    moveforward_kp, moveforward_ki, moveforward_kd);
+	pid_limits(moveforward_pid, -3.75, 3.75);
+	pid_sample(moveforward_pid, 1);
+	pid_auto(moveforward_pid);
+    }
+
+    //Initialize static variable if first loop
+    if (first_loop) {
+	prev_enc[LEFT_INDEX] = base_encoder[LEFT_INDEX].encoder_value;
+	prev_enc[RIGHT_INDEX] = base_encoder[RIGHT_INDEX].encoder_value;
+	first_loop = false;
+	dist_travelled = 0;
+    }
+
+    //Check whether pid need to be computed or the dist is within tolerable range
+    if(pid_need_compute(moveforward_pid) && fabs(dist_desired - dist_travelled) > 0.05){
+	//Use raw encoder value to calculate distance travelled, instead of using velocity
+	//To minimize sensor noise and increase accuracy
+	//Individual Distance travelled = change in encoder tick / PPR * wheel circumference
+	//Total distance travel at t = (Distance by left + Distance by right) / 2
+	float left_distance_travelled = base_encoder[LEFT_INDEX].encoder_value - prev_enc[LEFT_INDEX];
+	float right_distance_travelled = base_encoder[RIGHT_INDEX].encoder_value - prev_enc[RIGHT_INDEX];
+	float tmp = (M_PI * WHEEL_DIA) / (2 * BRITER_RS485_PPR);
+	float dist_travel_t = tmp * ( left_distance_travelled + right_distance_travelled);
+	dist_travelled += dist_travel_t;
+	//Refresh PID controller
+	moveforward_input = dist_travelled;
+	moveforward_setpoint = dist_desired;
+	pid_compute(moveforward_pid);
+	//Output wheel velocity
+	base_velocity_controller(moveforward_output, moveforward_output, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
+	return true;
+    }
+    else {
+	first_loop = true;
 	return false;
     }
 }
@@ -1268,6 +1305,58 @@ static bool in_climb_process(int front_enc, int back_enc) {
 	first_loop = true;
     return is_lifting;
 
+}
+
+/**
+ * Use for velocity PID control loop
+ * @param left_vel left reference velocity
+ * @param right_vel right reference velocity
+ * @param pid_left left pid struct
+ * @param pid_right right pid struct
+ */
+static void base_velocity_controller(float left_vel, float right_vel, PID_Struct *pid_left, PID_Struct *pid_right) {
+    float pwm_volt[2] = {
+	    0
+    };
+    int motor_output[2] = {
+	    0
+    };
+    if (fabs(left_vel) == 0 && fabs(base_velocity[LEFT_INDEX].velocity) < 0.05) {
+	//Reset PID if it is too small
+	pwm_volt[LEFT_INDEX] = 0;
+	PID_reset(&base_pid[LEFT_INDEX]);
+    }
+    else {
+	pwm_volt[LEFT_INDEX] = PID_getOutput(&base_pid[LEFT_INDEX], base_velocity[LEFT_INDEX].velocity,
+		reference_vel[LEFT_INDEX]);
+    }
+
+    if (fabs(reference_vel[RIGHT_INDEX]) == 0 && fabs(base_velocity[RIGHT_INDEX].velocity) < 0.05) {
+	pwm_volt[RIGHT_INDEX] = 0;
+	PID_reset(&base_pid[RIGHT_INDEX]);
+    }
+    else {
+	pwm_volt[RIGHT_INDEX] = PID_getOutput(&base_pid[RIGHT_INDEX], base_velocity[RIGHT_INDEX].velocity,
+		reference_vel[RIGHT_INDEX]);
+    }
+
+    //TODO: Add situation to account for motor deadband
+//    const float deadband_vel[2] = {0.15, 0.15};
+//    float deadband_volt[2] = {0};
+//    deadband_volt[LEFT_INDEX] = deadband_vel[LEFT_INDEX] * kf[LEFT_INDEX];
+//    deadband_volt[RIGHT_INDEX] = deadband_vel[RIGHT_INDEX] * kf[RIGHT_INDEX];
+//
+//    if(fabs(pwm_volt[LEFT_INDEX]) > 0.05 && fabs(pwm_volt[LEFT_INDEX]) <deadband_volt[LEFT_INDEX]){
+//	pwm_volt[LEFT_INDEX] = deadband_vel[LEFT_INDEX];
+//    }
+//    if(fabs(pwm_volt[RIGHT_INDEX]) > 0.05 && fabs(pwm_volt[RIGHT_INDEX]) <deadband_volt[RIGHT_INDEX]){
+//    	pwm_volt[RIGHT_INDEX] = deadband_vel[RIGHT_INDEX];
+//    }
+
+    motor_output[LEFT_INDEX] = (float) (pwm_volt[LEFT_INDEX] / battery_level) * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+    motor_output[RIGHT_INDEX] = (float) (pwm_volt[RIGHT_INDEX] / battery_level) * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+    MotorThrottle(&sabertooth_handler, TARGET_2, motor_output[LEFT_INDEX]);
+    MotorThrottle(&sabertooth_handler, TARGET_1, motor_output[RIGHT_INDEX]);
 }
 /* USER CODE END Application */
 
