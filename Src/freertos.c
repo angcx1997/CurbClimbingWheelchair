@@ -99,6 +99,8 @@ typedef enum {
 #define BITSET(byte,nbit)   ((byte) |=  (1<<(nbit)))
 #define BITCLEAR(byte,nbit) ((byte) &= ~(1<<(nbit)))
 #define BITCHECK(byte,nbit) ((byte) & 1<<(nbit))
+
+#define SIGN(x) (((x)>=0)?1:-1)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -339,6 +341,7 @@ void Task_NormalDrive(void *param) {
     PID_setMinIOutput(&base_pid[LEFT_INDEX], -max_i_output);
     PID_setFrequency(&base_pid[LEFT_INDEX], pid_freq);
 
+    int moveForwardFlag = false;
     while (1) {
 	if (lifting_mode == NORMAL) {
 	    //When user in normal driving mode
@@ -405,13 +408,21 @@ void Task_NormalDrive(void *param) {
 
 	//TODO: Add PID controller here
 	//generate sine wave
-	uint16_t sampling_rate = 1000;
-	tick_count++;
-	float v = 0.75 * sin(2 * M_PI * tick_count / sampling_rate);
-	base_velocity_controller(v, v, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
+//	uint16_t sampling_rate = 1000;
+//	tick_count++;
+//	float v = 0.75 * sin(2 * M_PI * tick_count / sampling_rate);
+//	base_velocity_controller(v, v, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
 
-	LOG_left_ref_vel.data = reference_vel[LEFT_INDEX];
-	LOG_right_ref_vel.data = reference_vel[RIGHT_INDEX];
+	if(moveForwardFlag == false){
+	    moveForwardFlag = move_forward(-0.7854);
+	}
+	if(moveForwardFlag == true){
+	    base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
+
+	}
+
+	LOG_left_ref_vel.data = v;
+	LOG_right_ref_vel.data = v;
 	LOG_left_enc_vel.data = base_velocity[LEFT_INDEX].velocity;
 	LOG_right_enc_vel.data = base_velocity[RIGHT_INDEX].velocity;
 
@@ -1139,42 +1150,45 @@ static bool climbingForward(float dist) {
  * @param  dist Distance to be moved by base wheel
  * @retval True if move forward the specified distance.
  */
+static float dist_travelled;
 static bool move_forward(float dist_desired) {
     static int32_t prev_enc[2];
     static bool first_loop = true;
-    static float dist_travelled;
+//    static float dist_travelled;
     static PID_t moveforward_pid = NULL;
     static struct pid_controller moveforward_ctrl;
     float moveforward_input = 0, moveforward_output = 0;
     float moveforward_setpoint = 0;
-    float moveforward_kp = 0.35, moveforward_ki = 0.003, moveforward_kd = 0.00001;
 
-    if(moveforward_pid == NULL){
+    float moveforward_kp = 0.4, moveforward_ki = 0.25, moveforward_kd = 0.000;
+
+    if (moveforward_pid == NULL) {
 	moveforward_pid = pid_create(&moveforward_ctrl, &moveforward_input, &moveforward_output, &moveforward_setpoint,
-		    moveforward_kp, moveforward_ki, moveforward_kd);
-	pid_limits(moveforward_pid, -3.75, 3.75);
+		moveforward_kp, moveforward_ki, moveforward_kd);
+	pid_limits(moveforward_pid, -4.00, 4.00);
 	pid_sample(moveforward_pid, 1);
 	pid_auto(moveforward_pid);
     }
 
     //Initialize static variable if first loop
     if (first_loop) {
-	prev_enc[LEFT_INDEX] = base_encoder[LEFT_INDEX].encoder_value;
-	prev_enc[RIGHT_INDEX] = base_encoder[RIGHT_INDEX].encoder_value;
+	prev_enc[LEFT_INDEX] = base_velocity[LEFT_INDEX].total_position;
+	prev_enc[RIGHT_INDEX] = base_velocity[RIGHT_INDEX].total_position;
 	first_loop = false;
 	dist_travelled = 0;
+	return false;
     }
 
     //Check whether pid need to be computed or the dist is within tolerable range
-    if(pid_need_compute(moveforward_pid) && fabs(dist_desired - dist_travelled) > 0.05){
+    if (!first_loop && fabs(dist_desired - dist_travelled) > 0.001) {
 	//Use raw encoder value to calculate distance travelled, instead of using velocity
 	//To minimize sensor noise and increase accuracy
 	//Individual Distance travelled = change in encoder tick / PPR * wheel circumference
 	//Total distance travel at t = (Distance by left + Distance by right) / 2
-	float left_distance_travelled = base_encoder[LEFT_INDEX].encoder_value - prev_enc[LEFT_INDEX];
-	float right_distance_travelled = base_encoder[RIGHT_INDEX].encoder_value - prev_enc[RIGHT_INDEX];
+	int32_t left_distance_travelled = base_velocity[LEFT_INDEX].total_position - prev_enc[LEFT_INDEX];
+	int32_t right_distance_travelled = base_velocity[RIGHT_INDEX].total_position - prev_enc[RIGHT_INDEX];
 	float tmp = (M_PI * WHEEL_DIA) / (2 * BRITER_RS485_PPR);
-	float dist_travel_t = tmp * ( left_distance_travelled + right_distance_travelled);
+	float dist_travel_t = tmp * (float)(left_distance_travelled + right_distance_travelled);
 	dist_travelled += dist_travel_t;
 	//Refresh PID controller
 	moveforward_input = dist_travelled;
@@ -1182,11 +1196,13 @@ static bool move_forward(float dist_desired) {
 	pid_compute(moveforward_pid);
 	//Output wheel velocity
 	base_velocity_controller(moveforward_output, moveforward_output, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
-	return true;
+	prev_enc[LEFT_INDEX] = base_velocity[LEFT_INDEX].total_position;
+	prev_enc[RIGHT_INDEX] = base_velocity[RIGHT_INDEX].total_position;
+	return false;
     }
     else {
 	first_loop = true;
-	return false;
+	return true;
     }
 }
 
@@ -1328,30 +1344,30 @@ static void base_velocity_controller(float left_vel, float right_vel, PID_Struct
     }
     else {
 	pwm_volt[LEFT_INDEX] = PID_getOutput(&base_pid[LEFT_INDEX], base_velocity[LEFT_INDEX].velocity,
-		reference_vel[LEFT_INDEX]);
+		left_vel);
     }
 
-    if (fabs(reference_vel[RIGHT_INDEX]) == 0 && fabs(base_velocity[RIGHT_INDEX].velocity) < 0.05) {
+    if (fabs(right_vel) == 0 && fabs(base_velocity[RIGHT_INDEX].velocity) < 0.05) {
 	pwm_volt[RIGHT_INDEX] = 0;
 	PID_reset(&base_pid[RIGHT_INDEX]);
     }
     else {
 	pwm_volt[RIGHT_INDEX] = PID_getOutput(&base_pid[RIGHT_INDEX], base_velocity[RIGHT_INDEX].velocity,
-		reference_vel[RIGHT_INDEX]);
+		right_vel);
     }
 
     //TODO: Add situation to account for motor deadband
-//    const float deadband_vel[2] = {0.15, 0.15};
-//    float deadband_volt[2] = {0};
-//    deadband_volt[LEFT_INDEX] = deadband_vel[LEFT_INDEX] * kf[LEFT_INDEX];
-//    deadband_volt[RIGHT_INDEX] = deadband_vel[RIGHT_INDEX] * kf[RIGHT_INDEX];
-//
-//    if(fabs(pwm_volt[LEFT_INDEX]) > 0.05 && fabs(pwm_volt[LEFT_INDEX]) <deadband_volt[LEFT_INDEX]){
-//	pwm_volt[LEFT_INDEX] = deadband_vel[LEFT_INDEX];
-//    }
-//    if(fabs(pwm_volt[RIGHT_INDEX]) > 0.05 && fabs(pwm_volt[RIGHT_INDEX]) <deadband_volt[RIGHT_INDEX]){
-//    	pwm_volt[RIGHT_INDEX] = deadband_vel[RIGHT_INDEX];
-//    }
+    const float deadband_vel[2] = {0.15, 0.15};
+    float deadband_volt[2] = {0};
+    deadband_volt[LEFT_INDEX] = deadband_vel[LEFT_INDEX] * kf[LEFT_INDEX];
+    deadband_volt[RIGHT_INDEX] = deadband_vel[RIGHT_INDEX] * kf[RIGHT_INDEX];
+
+    if(fabs(pwm_volt[LEFT_INDEX]) > 0.05 && fabs(pwm_volt[LEFT_INDEX]) <deadband_volt[LEFT_INDEX]){
+	pwm_volt[LEFT_INDEX] = deadband_vel[LEFT_INDEX] * SIGN(pwm_volt[LEFT_INDEX]);
+    }
+    if(fabs(pwm_volt[RIGHT_INDEX]) > 0.05 && fabs(pwm_volt[RIGHT_INDEX]) <deadband_volt[RIGHT_INDEX]){
+    	pwm_volt[RIGHT_INDEX] = deadband_vel[RIGHT_INDEX] * SIGN(pwm_volt[RIGHT_INDEX]);
+    }
 
     motor_output[LEFT_INDEX] = (float) (pwm_volt[LEFT_INDEX] / battery_level) * SABERTOOTH_MAX_ALLOWABLE_VALUE;
     motor_output[RIGHT_INDEX] = (float) (pwm_volt[RIGHT_INDEX] / battery_level) * SABERTOOTH_MAX_ALLOWABLE_VALUE;

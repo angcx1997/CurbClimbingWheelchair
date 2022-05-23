@@ -21,7 +21,7 @@ typedef struct{
     uint32_t	last_position;		/*!<Last position of encoder*/
     uint32_t	curr_position;		/*!<Current position of encoder*/
     int32_t	d_position;		/*!<Position travelled during d_tick*/
-    int32_t	total_position;		/*!<Position with direction*/
+    volatile int32_t	total_position;	/*!<Position with direction*/
     volatile float 	velocity;	/*!<Velocity of encoder*/
     uint32_t	last_tick;		/*!<Last time function get called*/
 }wheel_velocity_t;
