@@ -52,6 +52,7 @@
 #include "tfmini.h"
 #include "semphr.h"
 #include "encoder_util.h"
+#include "event_groups.h"
 #include "us_delay.h"
 /* USER CODE END Includes */
 

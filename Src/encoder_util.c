@@ -36,6 +36,8 @@ float calculateVelocity(wheel_velocity_t* wheel, uint32_t curr_position){
     //Calculate velocity
     wheel->velocity = WHEEL_RADIUS * 1000.0 * (float)(wheel->d_position) / BRITER_RS485_PPR  * 2.0 * 3.1415926 / (float)dt;
 
+    if (fabs(wheel->velocity) < 0.05)
+	wheel->velocity = 0;
     //Store last reading for subsequent calculation
     wheel->last_tick = HAL_GetTick();
     wheel->last_position = curr_position;

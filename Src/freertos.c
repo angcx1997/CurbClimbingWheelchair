@@ -69,6 +69,13 @@ typedef struct {
     uint8_t button2 :1;
     uint8_t button3 :1;
 } button_state_t;
+
+typedef enum{
+    SENSOR_FAULT_WHEEL_ENCODER = 0x00,
+    SENSOR_FAULT_CURB_DETECTOR,
+    SENSOR_FAULT_CLIMB_ENCODER,
+    SENSOR_FAULT_IMU
+}sensor_fault_e;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -77,7 +84,7 @@ typedef struct {
 #define ULONG_MAX 0xFFFFFFFF
 #endif
 //#define DEBUGGING
-//#define DATA_LOGGING
+#define DATA_LOGGING
 #ifndef MAX
     #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #endif
@@ -209,15 +216,21 @@ extern wheel_velocity_t base_velocity[2];
 MPU6050_t MPU6050;
   #ifdef DATA_LOGGING
     //Declare variable
-    volatile uint16_byte_u LOG_battery;
-    volatile float_byte_u LOG_left_pwm;
-    volatile float_byte_u LOG_right_pwm;
-    volatile uint32_byte_u LOG_left_enc;
-    volatile uint32_byte_u LOG_right_enc;
+    //System ID logging
+//    volatile uint16_byte_u LOG_battery;
+//    volatile float_byte_u LOG_left_pwm;
+//    volatile float_byte_u LOG_right_pwm;
+//    volatile uint32_byte_u LOG_left_enc;
+//    volatile uint32_byte_u LOG_right_enc;
+//    volatile float_byte_u LOG_left_enc_vel;
+//    volatile float_byte_u LOG_right_enc_vel;
+    //PID Tracking Logging
+    volatile float_byte_u LOG_left_ref_vel;
+    volatile float_byte_u LOG_right_ref_vel;
     volatile float_byte_u LOG_left_enc_vel;
     volatile float_byte_u LOG_right_enc_vel;
     volatile uint32_byte_u LOG_tick;
-    volatile uint32_t tick_count = 0;
+//    volatile uint32_t tick_count = 0;
     DataLogger_Msg_t datalog_msg;
     uint8_t usbBuffer[64];
     float v = 0.5;
@@ -239,8 +252,9 @@ void Task_Control(void *param) {
     /*
      * Pre-empt all other task and immediately stop running wheel
      */
+    uint32_t ulNotifiedValue;
     while (1) {
-	xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
+	xTaskNotifyWait(0, 0, &ulNotifiedValue, portMAX_DELAY);
 	if (lifting_mode == DANGER) {
 	    portENTER_CRITICAL();
 	    vTaskSuspendAll();
@@ -270,6 +284,8 @@ void Task_NormalDrive(void *param) {
     };
 
     //Initialize base wheel
+    int motor_output_1 = 0;
+    int motor_output_2 = 0;
     memset(&base_velocity[LEFT_INDEX], 0, sizeof(wheel_velocity_t));
     memset(&base_velocity[RIGHT_INDEX], 0, sizeof(wheel_velocity_t));
     DDrive_Init(&differential_drive_handler, FREQUENCY);
@@ -286,16 +302,17 @@ void Task_NormalDrive(void *param) {
     PID_Struct pid[2];
     const float p[2] = {
 	    //	17.7, 13.97
-	    5, 5
+	    0.51588, 0.51588
+//	    0,0
     }; /*!< Proportional constant in both left and right wheel PID */
     const float i[2] = {
-	    98.95, 102.54
+	    103.1758, 103.9472
     }; /*!< Integral constant in both left and right wheel PID */
     const float d[2] = {
 	    0.0, 0.0
     }; /*!< Derivative constant in both left and right wheel PID */
     const float f[2] = {
-	    0.0, 0.0
+	    12.5, 12.5
     }; /*!< Feedforward constant in both left and right wheel PID */
     float pwm_volt[2]; /*!< PWM voltage to be input into motor */
     float reference_vel[2]; /*!< Setpoint for PID controller */
@@ -373,6 +390,10 @@ void Task_NormalDrive(void *param) {
 	//Receive voltage from queue battery
 	if (uxQueueMessagesWaiting(queue_battery_level)) {
 	    xQueueReceive(queue_battery_level, &voltage_level, 0);
+	    voltage_level /= 100;
+	}
+	else{
+	    voltage_level = 25;
 	}
 
 //	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
@@ -381,7 +402,7 @@ void Task_NormalDrive(void *param) {
 
 	//TODO: Add PID controller here
 	//generate sine wave
-	uint16_t sampling_rate = 750;
+	uint16_t sampling_rate = 1000;
 	tick_count++;
 	float v = 0.75 * sin(2 * M_PI * tick_count/sampling_rate);
 	reference_vel[LEFT_INDEX] = v;
@@ -402,10 +423,16 @@ void Task_NormalDrive(void *param) {
 	else {
 	    pwm_volt[RIGHT_INDEX] = PID_getOutput(&pid[RIGHT_INDEX], base_velocity[RIGHT_INDEX].velocity, reference_vel[RIGHT_INDEX]);
 	}
-	int motor_output_1 = (float)(pwm_volt[LEFT_INDEX]/voltage_level) * SABERTOOTH_MAX_ALLOWABLE_VALUE;
-	int motor_output_2 = (float)(pwm_volt[RIGHT_INDEX]/voltage_level)  * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+	motor_output_1 = (float)(pwm_volt[LEFT_INDEX]/voltage_level) * SABERTOOTH_MAX_ALLOWABLE_VALUE;
+	motor_output_2 = (float)(pwm_volt[RIGHT_INDEX]/voltage_level)  * SABERTOOTH_MAX_ALLOWABLE_VALUE;
 	MotorThrottle(&sabertooth_handler, TARGET_2, motor_output_1);
 	MotorThrottle(&sabertooth_handler, TARGET_1, motor_output_2);
+
+	LOG_left_ref_vel.data = reference_vel[LEFT_INDEX];
+	LOG_right_ref_vel.data = reference_vel[RIGHT_INDEX];
+	LOG_left_enc_vel.data = base_velocity[LEFT_INDEX].velocity;
+	LOG_right_enc_vel.data = base_velocity[RIGHT_INDEX].velocity;
+
 
 #ifdef DATA_xxxLOGGING
 	/*============================================================================*/
@@ -440,7 +467,7 @@ void Task_NormalDrive(void *param) {
 //	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 
 #endif
-	vTaskDelay(15);
+	vTaskDelay(5);
     }
 }
 
@@ -506,7 +533,7 @@ void Task_Wheel_Encoder(void *param) {
 	//If encoder is faulty, no data reception, suspend all task
 	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 1000 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 1000) {
 	    lifting_mode = DANGER;
-	    xTaskNotify(task_control, 0, eNoAction);
+	    xTaskNotify(task_control, SENSOR_FAULT_WHEEL_ENCODER, eSetValueWithOverwrite);
 	}
 	vTaskDelayUntil(&tick, period);
     }
@@ -520,9 +547,9 @@ void Task_Curb_Detector(void *param) {
 	//UART error cause by noise flag, framing, overrun error happens during multibuffer dma communication
 	if (xTaskGetTickCount() - last_tf_mini_t > 500) {
 	    lifting_mode = DANGER;
-	    xTaskNotify(task_control, 0, eNoAction);
+	    xTaskNotify(task_control, SENSOR_FAULT_CURB_DETECTOR, eSetValueWithOverwrite);
 	}
-	vTaskDelay(1);
+	vTaskDelay(5);
     }
 }
 
@@ -542,10 +569,10 @@ void Task_Climb_Encoder(void *param) {
 
 	/*Error Handling*/
 	//If encoder is faulty, no data reception, suspend all task
-	if ((xTaskGetTickCount() - last_can_rx_t[0]) > 1000 || (xTaskGetTickCount() - last_can_rx_t[1]) > 1000) {
-	    lifting_mode = DANGER;
-	    xTaskNotify(task_control, 0, eNoAction);
-	}
+//	if ((xTaskGetTickCount() - last_can_rx_t[0]) > 1000 || (xTaskGetTickCount() - last_can_rx_t[1]) > 1000) {
+//	    lifting_mode = DANGER;
+//	    xTaskNotify(task_control, SENSOR_FAULT_CLIMB_ENCODER, eSetValueWithOverwrite);
+//	}
 	vTaskDelay(10);
     }
 }
@@ -662,11 +689,10 @@ void Task_IMU(void *param) {
 	    MPU6050_Init(&hi2c1);
 	}
 
-	if (mpu_error_count > 20) {
-	    lifting_mode = DANGER;
-	    xTaskNotify(task_control, 0, eNoAction);;
-	}
-
+//	if ((xTaskGetTickCount() - last_can_rx_t[0]) > 1000 || (xTaskGetTickCount() - last_can_rx_t[1]) > 1000) {
+//	    lifting_mode = DANGER;
+//	    xTaskNotify(task_control, SENSOR_FAULT_CLIMB_ENCODER, eSetValueWithOverwrite);
+//	}
 	vTaskDelay(10);
     }
 }
@@ -969,45 +995,34 @@ void Task_USB(void *param) {
 #endif
     while (1) {
 #ifdef DATA_LOGGING
-	/*============================================================================*/
-	/*Input sine wave*/
-//	uint16_t sampling_rate = 750;
-//	//generate sine wave
-//	float v = 0.75 * sin(2 * M_PI * tick_count/sampling_rate);
-//	tick_count++;
-//
-//	int motor_output_1 = v * SABERTOOTH_MAX_ALLOWABLE_VALUE;
-//	int motor_output_2 = v * SABERTOOTH_MAX_ALLOWABLE_VALUE;
-//	MotorThrottle(&sabertooth_handler, TARGET_2, motor_output_1);
-//	MotorThrottle(&sabertooth_handler, TARGET_1, motor_output_2);
-//
-//	LOG_battery = voltage_level;
-//	LOG_left_vel = motor_output_1;
-//	LOG_right_vel = motor_output_2;
-	/*============================================================================*/
-
     	//Define variable
 //    	LOG_left_enc.data = base_encoder[LEFT_INDEX].encoder_value;
 //    	LOG_right_enc.data = base_encoder[RIGHT_INDEX].encoder_value;
 //    	LOG_left_enc_vel.data = base_velocity[LEFT_INDEX].velocity;
 //    	LOG_right_enc_vel.data = base_velocity[RIGHT_INDEX].velocity;
-	LOG_left_pwm.data = 0.54321;
-	LOG_right_pwm.data = 0.56789;
-	LOG_left_enc.data = 0x12345670;
-	LOG_right_enc.data = 0x89ABCDEF;
-	LOG_left_enc_vel.data = 0.12345;
-	LOG_right_enc_vel.data = 0.67890;
-    	LOG_tick.data = xTaskGetTickCount();
 
-    	DataLogger_AddMessage(&datalog_msg, LOG_battery.array, sizeof(LOG_battery.array));
-    	DataLogger_AddMessage(&datalog_msg, LOG_left_pwm.array, sizeof(LOG_left_pwm.array));
-    	DataLogger_AddMessage(&datalog_msg, LOG_right_pwm.array, sizeof(LOG_right_pwm.array));
-    	DataLogger_AddMessage(&datalog_msg, LOG_left_enc.array, sizeof(LOG_left_enc.array));
-    	DataLogger_AddMessage(&datalog_msg, LOG_right_enc.array, sizeof(LOG_right_enc.array));
+	//Debugging purpose
+//	LOG_left_pwm.data = 0.54321;
+//	LOG_right_pwm.data = 0.56789;
+//	LOG_left_enc.data = 0x12345670;
+//	LOG_right_enc.data = 0x89ABCDEF;
+//	LOG_left_enc_vel.data = 0.12345;
+//	LOG_right_enc_vel.data = 0.67890;
+//
+//	DataLogger_AddMessage(&datalog_msg, LOG_battery.array, sizeof(LOG_battery.array));
+//	DataLogger_AddMessage(&datalog_msg, LOG_left_pwm.array, sizeof(LOG_left_pwm.array));
+//	DataLogger_AddMessage(&datalog_msg, LOG_right_pwm.array, sizeof(LOG_right_pwm.array));
+//	DataLogger_AddMessage(&datalog_msg, LOG_left_enc.array, sizeof(LOG_left_enc.array));
+//	DataLogger_AddMessage(&datalog_msg, LOG_right_enc.array, sizeof(LOG_right_enc.array));
+//	DataLogger_AddMessage(&datalog_msg, LOG_left_enc_vel.array, sizeof(LOG_left_enc_vel.array));
+//	DataLogger_AddMessage(&datalog_msg, LOG_right_enc_vel.array, sizeof(LOG_right_enc_vel.array));
+
+	LOG_tick.data = xTaskGetTickCount();
+	DataLogger_AddMessage(&datalog_msg, LOG_left_ref_vel.array, sizeof(LOG_left_ref_vel.array));
+	DataLogger_AddMessage(&datalog_msg, LOG_right_ref_vel.array, sizeof(LOG_right_ref_vel.array));
 	DataLogger_AddMessage(&datalog_msg, LOG_left_enc_vel.array, sizeof(LOG_left_enc_vel.array));
 	DataLogger_AddMessage(&datalog_msg, LOG_right_enc_vel.array, sizeof(LOG_right_enc_vel.array));
 	DataLogger_AddMessage(&datalog_msg, LOG_tick.array, sizeof(LOG_tick.array));
-
 	//4. After added all the message, call complete tx message to add check to ensure data integrity
 	DataLogger_CompleteTxMessage(&datalog_msg);
 	CDC_Transmit_FS(datalog_msg.pMsg, datalog_msg.size);
@@ -1056,10 +1071,7 @@ void Task_Battery(void *param) {
 	    uint8_t dummy;
 	    xQueueReceive(queue_battery_level, &dummy, 0);
 	}
-	xQueueSend(queue_battery_level, (void* )&voltage_level, 0);
-#ifdef DATA_LOGGING
-	LOG_battery.data = voltage_level;
-#endif
+	xQueueSend(queue_battery_level,(void* )&voltage_level, 0);
 	vTaskDelay(pdMS_TO_TICKS(10000));
 	//Error Handling
 	if (error_count > 50) {
