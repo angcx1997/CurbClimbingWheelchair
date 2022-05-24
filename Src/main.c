@@ -144,7 +144,6 @@ EncoderHandle encoderFront;
 //Buffer to receive uart tf-mini data
 uint8_t tf_rx_buf[TFMINI_RX_SIZE];
 
-extern MPU6050_t MPU6050;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/

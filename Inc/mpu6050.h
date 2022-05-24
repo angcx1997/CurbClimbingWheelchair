@@ -1,75 +1,85 @@
 /*
- * mpu6050.h
+ * MPUXX50.h
  *
- *  Created on: Nov 13, 2019
- *      Author: Bulanov Konstantin
+ *  Created on: Feb 27, 2022
+ *      Author: MarkSherstan
  */
 
-#ifndef INC_GY521_H_
-#define INC_GY521_H_
+#ifndef MPUXX50_H_
+#define MPUXX50_H_
 
-#endif /* INC_GY521_H_ */
-
+// Libs
 #include <stdint.h>
-#include "stm32f4xx.h"
+#include <math.h>
+#include <stm32f4xx.h>
+#include <stdbool.h>
 
+// Constants
+#define RAD2DEG 57.2957795131
 
-// MPU6050 structure
-typedef struct {
+// Defines
+#define WHO_AM_I_6050_ANS 0x68
+#define WHO_AM_I_9250_ANS 0x71
+#define WHO_AM_I          0x75
+#define AD0_LOW           0x68
+#define AD0_HIGH          0x69
+#define GYRO_CONFIG       0x1B
+#define ACCEL_CONFIG      0x1C
+#define PWR_MGMT_1        0x6B
+#define ACCEL_XOUT_H      0x3B
+#define I2C_TIMOUT_MS     5
 
-    int16_t Accel_X_RAW;
-    int16_t Accel_Y_RAW;
-    int16_t Accel_Z_RAW;
-    float Ax;
-    float Error_Ax;
-    float Az;
-    float Error_Az;
-    float Ay;
-    float Error_Ay;
+// Full scale ranges
+enum gyroscopeFullScaleRange
+{
+    GFSR_250DPS,
+    GFSR_500DPS,
+    GFSR_1000DPS,
+    GFSR_2000DPS
+};
 
-    int16_t Gyro_X_RAW;
-    int16_t Gyro_Y_RAW;
-    int16_t Gyro_Z_RAW;
-    float Gx;
-    float Error_Gx;
-    float Gy;
-    float Error_Gy;
-    float Gz;
-    float Error_Gz;
+enum accelerometerFullScaleRange
+{
+    AFSR_2G,
+    AFSR_4G,
+    AFSR_8G,
+    AFSR_16G
+};
 
-    float Temperature;
+// Structures
+struct RawData
+{
+    int16_t ax, ay, az, gx, gy, gz;
+} rawData;
 
-    float KalmanAngleX;
-    float KalmanAngleY;
+struct SensorData
+{
+    float ax, ay, az, gx, gy, gz;
+} sensorData;
 
-    int count;
-} MPU6050_t;
+struct GyroCal
+{
+    float x, y, z;
+} gyroCal;
 
+struct Attitude
+{
+    float r, p, y;
+} attitude;
 
-// Kalman structure
-typedef struct {
-    float Q_angle;
-    float Q_bias;
-    float R_measure;
-    float angle;
-    float bias;
-    float P[2][2];
-} Kalman_t;
+// Variables
+uint8_t _addr;
+float _dt, _tau;
+float aScaleFactor, gScaleFactor;
 
-
-HAL_StatusTypeDef MPU6050_Init(I2C_HandleTypeDef *I2Cx);
-
-void MPU6050_Calculate_Error(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct);
-
-void MPU6050_Read_Accel(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct);
-
-void MPU6050_Read_Gyro(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct);
-
-void MPU6050_Read_Temp(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct);
-
-HAL_StatusTypeDef MPU6050_Read_All(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct);
-
-float Kalman_getAngle(Kalman_t *Kalman, float newAngle, float newRate, float dt);
+// Functions
+HAL_StatusTypeDef MPU_begin(I2C_HandleTypeDef *I2Cx, uint8_t addr, uint8_t aScale, uint8_t gScale, float tau, float dt);
+void MPU_calibrateGyro(I2C_HandleTypeDef *I2Cx, uint16_t numCalPoints);
+HAL_StatusTypeDef MPU_calcAttitude(I2C_HandleTypeDef *I2Cx);
+HAL_StatusTypeDef MPU_readRawData(I2C_HandleTypeDef *I2Cx);
+HAL_StatusTypeDef MPU_readProcessedData(I2C_HandleTypeDef *I2Cx);
+void MPU_writeGyroFullScaleRange(I2C_HandleTypeDef *I2Cx, uint8_t gScale);
+void MPU_writeAccFullScaleRange(I2C_HandleTypeDef *I2Cx, uint8_t aScale);
 
 /**
  * Used to reset mpu6050 with mcu connection
@@ -79,3 +89,5 @@ float Kalman_getAngle(Kalman_t *Kalman, float newAngle, float newRate, float dt)
  * @return HAL_StatusTypeDef HAL_OK if mpu6050 able to work fine
  */
 HAL_StatusTypeDef MPU6050_I2C_Reset(I2C_HandleTypeDef *I2Cx);
+
+#endif /* MPUXX50_H_ */

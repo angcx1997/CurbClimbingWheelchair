@@ -86,7 +86,7 @@ typedef enum {
 #define ULONG_MAX 0xFFFFFFFF
 #endif
 //#define DEBUGGING
-#define DATA_LOGGING
+#define DATA_xxLOGGING
 #ifndef MAX
     #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #endif
@@ -219,7 +219,6 @@ Debug_Tick_t encoder_tick_taken = {
 extern wheel_velocity_t base_velocity[2];
 
 //IMU
-MPU6050_t MPU6050;
 volatile float orientation = 0;
 
 #ifdef DATA_LOGGING
@@ -418,20 +417,21 @@ void Task_NormalDrive(void *param) {
 //	float v = 0.75 * sin(2 * M_PI * tick_count / sampling_rate);
 //	base_velocity_controller(v, v, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
 
-	if(moveForwardFlag == false){
+	if (moveForwardFlag == false) {
 	    moveForwardFlag = turn_angle(-45, orientation);
 	}
-	if(moveForwardFlag == true){
+	if (moveForwardFlag == true) {
 	    base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
 
 	}
 
-	LOG_left_ref_vel.data = v;
-	LOG_right_ref_vel.data = v;
-	LOG_left_enc_vel.data = base_velocity[LEFT_INDEX].velocity;
-	LOG_right_enc_vel.data = base_velocity[RIGHT_INDEX].velocity;
+
 
 #ifdef DATA_xxxLOGGING
+	LOG_left_ref_vel.data = v;
+		LOG_right_ref_vel.data = v;
+		LOG_left_enc_vel.data = base_velocity[LEFT_INDEX].velocity;
+		LOG_right_enc_vel.data = base_velocity[RIGHT_INDEX].velocity;
 	/*============================================================================*/
 	/*Input wave*/
 	uint16_t sampling_rate = 750;
@@ -663,34 +663,37 @@ void Task_Switches(void *param) {
     }
 }
 
+float pitch = 0, roll = 0;
+float pitchAcc = 0, rollAcc = 0;
 void Task_IMU(void *param) {
     uint32_t mpu_error_count = 0;
     uint32_t state_count = xTaskGetTickCount();
 
-    while (MPU6050_Init(&hi2c1) != HAL_OK) {
+    const float filter = 0.98;
+    const float sampling_rate = 0.01;
+    const uint8_t mpu6050_addr = WHO_AM_I_6050_ANS;
+    //Initialize MPU6050, Reset the SDA line if cannot transmit message
+    while (MPU_begin(&hi2c1, mpu6050_addr, AFSR_2G, GFSR_250DPS, filter, sampling_rate) != HAL_OK) {
 	if (xTaskGetTickCount() - state_count > 50)
 	    if (MPU6050_I2C_Reset(&hi2c1) == HAL_ERROR) {
 		Error_Handler();
 	    }
     }
+
+    MPU_calibrateGyro(&hi2c1, 100);
+
     while (1) {
 	//Sensor acquisition of IMU
-	if (MPU6050_Read_All(&hi2c1, &MPU6050) == HAL_OK) {
-	    mpu_error_count = 0;
-	    orientation = MPU6050.KalmanAngleY;
-	}
-	else {
+	if(MPU_calcAttitude(&hi2c1) != HAL_OK){
 	    mpu_error_count++;
-	}
-	if (mpu_error_count > 10) {
-	    MPU6050_I2C_Reset(&hi2c1);
-	    MPU6050_Init(&hi2c1);
+	}else{
+	    mpu_error_count = 0;
 	}
 
-//	if ((xTaskGetTickCount() - last_can_rx_t[0]) > 1000 || (xTaskGetTickCount() - last_can_rx_t[1]) > 1000) {
-//	    lifting_mode = DANGER;
-//	    xTaskNotify(task_control, ERROR_CLIMB_ENCODER, eSetValueWithOverwrite);
-//	}
+	if (mpu_error_count > 10) {
+	    MPU6050_I2C_Reset(&hi2c1);
+	    MPU_begin(&hi2c1, mpu6050_addr, AFSR_2G, GFSR_250DPS, filter, sampling_rate);
+	}
 	vTaskDelay(10);
     }
 }
@@ -1194,7 +1197,7 @@ static bool move_forward(float dist_desired) {
 	int32_t left_distance_travelled = base_velocity[LEFT_INDEX].total_position - prev_enc[LEFT_INDEX];
 	int32_t right_distance_travelled = base_velocity[RIGHT_INDEX].total_position - prev_enc[RIGHT_INDEX];
 	float tmp = (M_PI * WHEEL_DIA) / (2 * BRITER_RS485_PPR);
-	float dist_travel_t = tmp * (float)(left_distance_travelled + right_distance_travelled);
+	float dist_travel_t = tmp * (float) (left_distance_travelled + right_distance_travelled);
 	dist_travelled += dist_travel_t;
 	//Refresh PID controller
 	moveforward_input = dist_travelled;
@@ -1218,12 +1221,13 @@ static bool move_forward(float dist_desired) {
  * @param curr_angle (in degree)latest angle when function called
  * @return True if finish turning specified angle
  */
-static bool turn_angle(float angle_desired, float curr_angle){
+float v_turn = 0;
+static bool turn_angle(float angle_desired, float curr_angle) {
     static bool first_loop = true;
     static PID_t turnangle_pid = NULL;
     static struct pid_controller turnangle_ctrl;
     static float turnangle_input = 0, turnangle_output = 0, turnangle_setpoint = 0;
-    float turnangle_kp = 0.4, turnangle_ki = 0.25, turnangle_kd = 0.000;
+    float turnangle_kp = 0.1, turnangle_ki = 0.05, turnangle_kd = 0.000;
 
     curr_angle = TO_RAD(curr_angle);
     angle_desired = TO_RAD(angle_desired);
@@ -1257,8 +1261,9 @@ static bool turn_angle(float angle_desired, float curr_angle){
 	//Formula:
 	//V_r = w * L / 2R
 	//V_l = - V_r
-	float v = turnangle_output * BASE_WIDTH / WHEEL_DIA;
-	base_velocity_controller(-v, v, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
+//	float v = turnangle_output * BASE_WIDTH / WHEEL_DIA;
+	v_turn = turnangle_output * BASE_WIDTH / WHEEL_DIA;
+//	base_velocity_controller(-v, v, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
 	return false;
     }
     else {
@@ -1404,8 +1409,7 @@ static void base_velocity_controller(float left_vel, float right_vel, PID_Struct
 	PID_reset(&base_pid[LEFT_INDEX]);
     }
     else {
-	pwm_volt[LEFT_INDEX] = PID_getOutput(&base_pid[LEFT_INDEX], base_velocity[LEFT_INDEX].velocity,
-		left_vel);
+	pwm_volt[LEFT_INDEX] = PID_getOutput(&base_pid[LEFT_INDEX], base_velocity[LEFT_INDEX].velocity, left_vel);
     }
 
     if (fabs(right_vel) == 0 && fabs(base_velocity[RIGHT_INDEX].velocity) < 0.05) {
@@ -1413,21 +1417,24 @@ static void base_velocity_controller(float left_vel, float right_vel, PID_Struct
 	PID_reset(&base_pid[RIGHT_INDEX]);
     }
     else {
-	pwm_volt[RIGHT_INDEX] = PID_getOutput(&base_pid[RIGHT_INDEX], base_velocity[RIGHT_INDEX].velocity,
-		right_vel);
+	pwm_volt[RIGHT_INDEX] = PID_getOutput(&base_pid[RIGHT_INDEX], base_velocity[RIGHT_INDEX].velocity, right_vel);
     }
 
     //TODO: Add situation to account for motor deadband
-    const float deadband_vel[2] = {0.15, 0.15};
-    float deadband_volt[2] = {0};
+    const float deadband_vel[2] = {
+	    0.15, 0.15
+    };
+    float deadband_volt[2] = {
+	    0
+    };
     deadband_volt[LEFT_INDEX] = deadband_vel[LEFT_INDEX] * kf[LEFT_INDEX];
     deadband_volt[RIGHT_INDEX] = deadband_vel[RIGHT_INDEX] * kf[RIGHT_INDEX];
 
-    if(fabs(pwm_volt[LEFT_INDEX]) > 0.05 && fabs(pwm_volt[LEFT_INDEX]) <deadband_volt[LEFT_INDEX]){
+    if (fabs(pwm_volt[LEFT_INDEX]) > 0.05 && fabs(pwm_volt[LEFT_INDEX]) < deadband_volt[LEFT_INDEX]) {
 	pwm_volt[LEFT_INDEX] = deadband_vel[LEFT_INDEX] * SIGN(pwm_volt[LEFT_INDEX]);
     }
-    if(fabs(pwm_volt[RIGHT_INDEX]) > 0.05 && fabs(pwm_volt[RIGHT_INDEX]) <deadband_volt[RIGHT_INDEX]){
-    	pwm_volt[RIGHT_INDEX] = deadband_vel[RIGHT_INDEX] * SIGN(pwm_volt[RIGHT_INDEX]);
+    if (fabs(pwm_volt[RIGHT_INDEX]) > 0.05 && fabs(pwm_volt[RIGHT_INDEX]) < deadband_volt[RIGHT_INDEX]) {
+	pwm_volt[RIGHT_INDEX] = deadband_vel[RIGHT_INDEX] * SIGN(pwm_volt[RIGHT_INDEX]);
     }
 
     motor_output[LEFT_INDEX] = (float) (pwm_volt[LEFT_INDEX] / battery_level) * SABERTOOTH_MAX_ALLOWABLE_VALUE;

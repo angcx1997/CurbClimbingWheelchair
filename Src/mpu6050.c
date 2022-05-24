@@ -1,283 +1,234 @@
 /*
- * mpu6050.c
+ * MPUXX50.c
  *
- *  Created on: Nov 13, 2019
- *      Author: Bulanov Konstantin
- *
- *  Contact information
- *  -------------------
- *
- * e-mail   :  leech001@gmail.com
+ *  Created on: Feb 27, 2022
+ *      Author: MarkSherstan
  */
 
-/*
- * |---------------------------------------------------------------------------------
- * | Copyright (C) Bulanov Konstantin,2019
- * |
- * | This program is free software: you can redistribute it and/or modify
- * | it under the terms of the GNU General Public License as published by
- * | the Free Software Foundation, either version 3 of the License, or
- * | any later version.
- * |
- * | This program is distributed in the hope that it will be useful,
- * | but WITHOUT ANY WARRANTY; without even the implied warranty of
- * | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * | GNU General Public License for more details.
- * |
- * | You should have received a copy of the GNU General Public License
- * | along with this program.  If not, see <http://www.gnu.org/licenses/>.
- * |
- * | Kalman filter algorithm used from https://github.com/TKJElectronics/KalmanFilter
- * |---------------------------------------------------------------------------------
- */
-
-
-#include <math.h>
 #include "mpu6050.h"
 #include "main.h"
 #include "us_delay.h"
 
-
-#define RAD_TO_DEG 57.295779513082320876798154814105
-
-#define WHO_AM_I_REG 0x75
-#define PWR_MGMT_1_REG 0x6B
-#define SMPLRT_DIV_REG 0x19
-#define ACCEL_CONFIG_REG 0x1C
-#define ACCEL_XOUT_H_REG 0x3B
-#define TEMP_OUT_H_REG 0x41
-#define GYRO_CONFIG_REG 0x1B
-#define GYRO_XOUT_H_REG 0x43
-
-// Setup MPU6050
-#define MPU6050_ADDR 0xD0
-const uint16_t i2c_timeout = 1;
-const float Accel_Z_corrector = 14418.0;
-
-/**
- * Used to convert the i2c peripheral back to GPIO to allow bit-banging
- * @param hi2c pointer to i2c handler
- * @param state configuration of GPIO pin as input or output
- */
 static void HAL_I2C_GPIO_Init(I2C_HandleTypeDef *hi2c, uint8_t state);
 
-uint32_t timer;
+/// @brief Set the IMU address, check for connection, reset IMU, and set full range scale.
+/// @param I2Cx Pointer to I2C structure config.
+/// @param addr Hex address based on AD0 pin - 0x68 low or 0x69 high.
+/// @param aScale Set accelerometer full scale range: 0 for ±2g, 1 for ±4g, 2 for ±8g, and 3 for ±16g.
+/// @param gScale Set gyroscope full scale range: 0 for ±250°/s, 1 for ±500°/s, 2 for ±1000°/s, and 3 for ±2000°/s.
+/// @param tau Set tau value for the complementary filter (typically 0.98).
+/// @param dt Set sampling rate in seconds determined by the timer interrupt.
+HAL_StatusTypeDef MPU_begin(I2C_HandleTypeDef *I2Cx, uint8_t addr, uint8_t aScale, uint8_t gScale, float tau, float dt)
+{
+    // Save values
+    _addr = addr << 1;
+    _tau = tau;
+    _dt = dt;
 
-Kalman_t KalmanX = {
-        .Q_angle = 0.001f,
-        .Q_bias = 0.01f,
-        .R_measure = 0.03f
-};
-
-Kalman_t KalmanY = {
-        .Q_angle = 0.001f,
-        .Q_bias = 0.003f,
-        .R_measure = 0.03f,
-};
-
-I2C_HandleTypeDef* local_I2C;
-
-HAL_StatusTypeDef MPU6050_Init(I2C_HandleTypeDef *I2Cx) {
+    // Initialize variables
     uint8_t check;
-    uint8_t Data;
-    HAL_StatusTypeDef status;
-    // check device ID WHO_AM_I
+    uint8_t select;
 
-    local_I2C = I2Cx;
-    status = HAL_I2C_Mem_Read(I2Cx, MPU6050_ADDR, WHO_AM_I_REG, 1, &check, 1, i2c_timeout);
+    // Confirm device
+    HAL_I2C_Mem_Read(I2Cx, _addr, WHO_AM_I, 1, &check, 1, I2C_TIMOUT_MS);
 
-    if (check == 0x68)  // 0x68 will be returned by the sensor if everything goes well
+    // TODO: If 9250 or 6050 fails could it trigger the opposite check???
+    if ((check == WHO_AM_I_9250_ANS) || (check == WHO_AM_I_6050_ANS))
     {
-        // power management register 0X6B we should write all 0's to wake the sensor up
-        Data = 0;
-        status = HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, PWR_MGMT_1_REG, 1, &Data, 1, i2c_timeout);
+        // Startup / reset the sensor
+        select = 0x00;
+        HAL_I2C_Mem_Write(I2Cx, _addr, PWR_MGMT_1, 1, &select, 1, I2C_TIMOUT_MS);
 
-        // Set DATA RATE of 1KHz by writing SMPLRT_DIV register
-        Data = 0x07;
-        status = HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, SMPLRT_DIV_REG, 1, &Data, 1, i2c_timeout);
+        // Set the full scale ranges
+        MPU_writeAccFullScaleRange(I2Cx, aScale);
+        MPU_writeGyroFullScaleRange(I2Cx, gScale);
 
-        // Set accelerometer configuration in ACCEL_CONFIG Register
-        // XA_ST=0,YA_ST=0,ZA_ST=0, FS_SEL=0 -> � 2g
-        Data = 0x00;
-        status = HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, ACCEL_CONFIG_REG, 1, &Data, 1, i2c_timeout);
-
-        // Set Gyroscopic configuration in GYRO_CONFIG Register
-        // XG_ST=0,YG_ST=0,ZG_ST=0, FS_SEL=0 -> � 250 �/s
-        Data = 0x00;
-        status = HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, GYRO_CONFIG_REG, 1, &Data, 1, i2c_timeout);
+        return HAL_OK;
     }
+    else
+    {
+        return HAL_ERROR;
+    }
+}
+
+/// @brief Set the accelerometer full scale range.
+/// @param I2Cx Pointer to I2C structure config.
+/// @param aScale Set 0 for ±2g, 1 for ±4g, 2 for ±8g, and 3 for ±16g.
+void MPU_writeAccFullScaleRange(I2C_HandleTypeDef *I2Cx, uint8_t aScale)
+{
+    // Variable init
+    uint8_t select;
+
+    // Set the value
+    switch (aScale)
+    {
+    case AFSR_2G:
+        aScaleFactor = 16384.0;
+        select = 0x00;
+        HAL_I2C_Mem_Write(I2Cx, _addr, ACCEL_CONFIG, 1, &select, 1, I2C_TIMOUT_MS);
+        break;
+    case AFSR_4G:
+        aScaleFactor = 8192.0;
+        select = 0x08;
+        HAL_I2C_Mem_Write(I2Cx, _addr, ACCEL_CONFIG, 1, &select, 1, I2C_TIMOUT_MS);
+        break;
+    case AFSR_8G:
+        aScaleFactor = 4096.0;
+        select = 0x10;
+        HAL_I2C_Mem_Write(I2Cx, _addr, ACCEL_CONFIG, 1, &select, 1, I2C_TIMOUT_MS);
+        break;
+    case AFSR_16G:
+        aScaleFactor = 2048.0;
+        select = 0x18;
+        HAL_I2C_Mem_Write(I2Cx, _addr, ACCEL_CONFIG, 1, &select, 1, I2C_TIMOUT_MS);
+        break;
+    default:
+        aScaleFactor = 8192.0;
+        select = 0x08;
+        HAL_I2C_Mem_Write(I2Cx, _addr, ACCEL_CONFIG, 1, &select, 1, I2C_TIMOUT_MS);
+        break;
+    }
+}
+
+/// @brief Set the gyroscope full scale range.
+/// @param I2Cx Pointer to I2C structure config.
+/// @param gScale Set 0 for ±250°/s, 1 for ±500°/s, 2 for ±1000°/s, and 3 for ±2000°/s.
+void MPU_writeGyroFullScaleRange(I2C_HandleTypeDef *I2Cx, uint8_t gScale)
+{
+    // Variable init
+    uint8_t select;
+
+    // Set the value
+    switch (gScale)
+    {
+    case GFSR_250DPS:
+        gScaleFactor = 131.0;
+        select = 0x00;
+        HAL_I2C_Mem_Write(I2Cx, _addr, GYRO_CONFIG, 1, &select, 1, I2C_TIMOUT_MS);
+        break;
+    case GFSR_500DPS:
+        gScaleFactor = 65.5;
+        select = 0x08;
+        HAL_I2C_Mem_Write(I2Cx, _addr, GYRO_CONFIG, 1, &select, 1, I2C_TIMOUT_MS);
+        break;
+    case GFSR_1000DPS:
+        gScaleFactor = 32.8;
+        select = 0x10;
+        HAL_I2C_Mem_Write(I2Cx, _addr, GYRO_CONFIG, 1, &select, 1, I2C_TIMOUT_MS);
+        break;
+    case GFSR_2000DPS:
+        gScaleFactor = 16.4;
+        select = 0x18;
+        HAL_I2C_Mem_Write(I2Cx, _addr, GYRO_CONFIG, 1, &select, 1, I2C_TIMOUT_MS);
+        break;
+    default:
+        gScaleFactor = 65.5;
+        select = 0x08;
+        HAL_I2C_Mem_Write(I2Cx, _addr, GYRO_CONFIG, 1, &select, 1, I2C_TIMOUT_MS);
+        break;
+    }
+}
+
+/// @brief Read raw data from IMU.
+/// @param I2Cx Pointer to I2C structure config.
+HAL_StatusTypeDef MPU_readRawData(I2C_HandleTypeDef *I2Cx)
+{
+    HAL_StatusTypeDef status;
+    // Init buffer
+    uint8_t buf[14];
+
+    // Subroutine for reading the raw data
+    status = HAL_I2C_Mem_Read(I2Cx, _addr, ACCEL_XOUT_H, 1, buf, 14, I2C_TIMOUT_MS);
+
+    // Bit shift the data
+    rawData.ax = buf[0] << 8 | buf[1];
+    rawData.ay = buf[2] << 8 | buf[3];
+    rawData.az = buf[4] << 8 | buf[5];
+    // temperature = buf[6] << 8 | buf[7];
+    rawData.gx = buf[8] << 8 | buf[9];
+    rawData.gy = buf[10] << 8 | buf[11];
+    rawData.gz = buf[12] << 8 | buf[13];
+
     return status;
 }
 
+/// @brief Find offsets for each axis of gyroscope.
+/// @param I2Cx Pointer to I2C structure config.
+/// @param numCalPoints Number of data points to average.
+void MPU_calibrateGyro(I2C_HandleTypeDef *I2Cx, uint16_t numCalPoints)
+{
+    // Init
+    int32_t x = 0;
+    int32_t y = 0;
+    int32_t z = 0;
 
-void MPU6050_Read_Accel(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct) {
-    uint8_t Rec_Data[6];
-
-    // Read 6 BYTES of data starting from ACCEL_XOUT_H register
-
-    HAL_I2C_Mem_Read(I2Cx, MPU6050_ADDR, ACCEL_XOUT_H_REG, 1, Rec_Data, 6, i2c_timeout);
-
-    DataStruct->Accel_X_RAW = (int16_t) (Rec_Data[0] << 8 | Rec_Data[1]);
-    DataStruct->Accel_Y_RAW = (int16_t) (Rec_Data[2] << 8 | Rec_Data[3]);
-    DataStruct->Accel_Z_RAW = (int16_t) (Rec_Data[4] << 8 | Rec_Data[5]);
-
-    /*** convert the RAW values into acceleration in 'g'
-         we have to divide according to the Full scale value set in FS_SEL
-         I have configured FS_SEL = 0. So I am dividing by 16384.0
-         for more details check ACCEL_CONFIG Register              ****/
-
-    DataStruct->Ax = DataStruct->Accel_X_RAW / 16384.0;
-    DataStruct->Ay = DataStruct->Accel_Y_RAW / 16384.0;
-    DataStruct->Az = DataStruct->Accel_Z_RAW / 16384.0;
-}
-
-
-void MPU6050_Read_Gyro(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct) {
-    uint8_t Rec_Data[6];
-
-    // Read 6 BYTES of data starting from GYRO_XOUT_H register
-
-    HAL_I2C_Mem_Read(I2Cx, MPU6050_ADDR, GYRO_XOUT_H_REG, 1, Rec_Data, 6, i2c_timeout);
-
-    DataStruct->Gyro_X_RAW = (int16_t) (Rec_Data[0] << 8 | Rec_Data[1]);
-    DataStruct->Gyro_Y_RAW = (int16_t) (Rec_Data[2] << 8 | Rec_Data[3]);
-    DataStruct->Gyro_Z_RAW = (int16_t) (Rec_Data[4] << 8 | Rec_Data[5]);
-
-    /*** convert the RAW values into dps (�/s)
-         we have to divide according to the Full scale value set in FS_SEL
-         I have configured FS_SEL = 0. So I am dividing by 131.0
-         for more details check GYRO_CONFIG Register              ****/
-
-    DataStruct->Gx = DataStruct->Gyro_X_RAW / 131.0;
-    DataStruct->Gy = DataStruct->Gyro_Y_RAW / 131.0;
-    DataStruct->Gz = DataStruct->Gyro_Z_RAW / 131.0;
-}
-
-void MPU6050_Calculate_Error(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct){
-    // We can call this funtion in the setup section to calculate the accelerometer and gyro data error. From here we will get the error values used in the above equations printed on the Serial Monitor.
-    // Note that we should place the IMU flat in order to get the proper values, so that we then can the correct values
-    // Read accelerometer values 200 times
-    uint8_t MAX_COUNT = 200;
-    DataStruct->Error_Ax = 0;
-    DataStruct->Error_Ay = 0;
-    DataStruct->Error_Az = 0;
-    for(uint8_t i = 0; i < MAX_COUNT; i++){
-	MPU6050_Read_Accel(I2Cx, DataStruct);
-	// Sum all readings
-	DataStruct->Error_Ax = DataStruct->Error_Ax + DataStruct->Ax;
-	DataStruct->Error_Ay = DataStruct->Error_Ay + DataStruct->Ay;
-	DataStruct->Error_Az = DataStruct->Error_Az + DataStruct->Az;
+    // Zero guard
+    if (numCalPoints == 0)
+    {
+        numCalPoints = 1;
     }
-    DataStruct->Error_Ax /= MAX_COUNT;
-    DataStruct->Error_Ay /= MAX_COUNT;
-    DataStruct->Error_Az /= MAX_COUNT;
 
-    DataStruct->Error_Gx = 0;
-    DataStruct->Error_Gy = 0;
-    DataStruct->Error_Gz = 0;
-    for(uint8_t i = 0; i < MAX_COUNT; i++){
-	MPU6050_Read_Gyro(I2Cx, DataStruct);
-	// Sum all readings
-	DataStruct->Error_Gx = DataStruct->Error_Gx + DataStruct->Gx;
-	DataStruct->Error_Gy = DataStruct->Error_Gy + DataStruct->Gy;
-	DataStruct->Error_Gz = DataStruct->Error_Gz + DataStruct->Gz;
+    // Save specified number of points
+    for (uint16_t ii = 0; ii < numCalPoints; ii++)
+    {
+        MPU_readRawData(I2Cx);
+        x += rawData.gx;
+        y += rawData.gy;
+        z += rawData.gz;
+        HAL_Delay(3);
     }
-    DataStruct->Error_Gx /= MAX_COUNT;
-    DataStruct->Error_Gy /= MAX_COUNT;
-    DataStruct->Error_Gz /= MAX_COUNT;
+
+    // Average the saved data points to find the gyroscope offset
+    gyroCal.x = (float)x / (float)numCalPoints;
+    gyroCal.y = (float)y / (float)numCalPoints;
+    gyroCal.z = (float)z / (float)numCalPoints;
 }
 
-void MPU6050_Read_Temp(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct) {
-    uint8_t Rec_Data[2];
-    int16_t temp;
+/// @brief Calculate the real world sensor values.
+/// @param I2Cx Pointer to I2C structure config.
+HAL_StatusTypeDef MPU_readProcessedData(I2C_HandleTypeDef *I2Cx)
+{
+    HAL_StatusTypeDef status;
+    // Get raw values from the IMU
+    status = MPU_readRawData(I2Cx);
 
-    // Read 2 BYTES of data starting from TEMP_OUT_H_REG register
+    // Convert accelerometer values to g's
+    sensorData.ax = rawData.ax / aScaleFactor;
+    sensorData.ay = rawData.ay / aScaleFactor;
+    sensorData.az = rawData.az / aScaleFactor;
 
-    HAL_I2C_Mem_Read(I2Cx, MPU6050_ADDR, TEMP_OUT_H_REG, 1, Rec_Data, 2, i2c_timeout);
+    // Compensate for gyro offset
+    sensorData.gx = rawData.gx - gyroCal.x;
+    sensorData.gy = rawData.gy - gyroCal.y;
+    sensorData.gz = rawData.gz - gyroCal.z;
 
-    temp = (int16_t) (Rec_Data[0] << 8 | Rec_Data[1]);
-    DataStruct->Temperature = (float) ((int16_t) temp / (float) 340.0 + (float) 36.53);
+    // Convert gyro values to deg/s
+    sensorData.gx /= gScaleFactor;
+    sensorData.gy /= gScaleFactor;
+    sensorData.gz /= gScaleFactor;
+
+    return status;
 }
 
-HAL_StatusTypeDef MPU6050_Read_All(I2C_HandleTypeDef *I2Cx, MPU6050_t *DataStruct) {
-    uint8_t Rec_Data[14];
-    int16_t temp;
-    static uint32_t prev_t = 0;
+/// @brief Calculate the attitude of the sensor in degrees using a complementary filter.
+/// @param I2Cx Pointer to I2C structure config.
+HAL_StatusTypeDef MPU_calcAttitude(I2C_HandleTypeDef *I2Cx)
+{
+    HAL_StatusTypeDef status;
 
-    // Read 14 BYTES of data starting from ACCEL_XOUT_H register
-    HAL_StatusTypeDef status = HAL_I2C_Mem_Read(I2Cx, MPU6050_ADDR, ACCEL_XOUT_H_REG, 1, Rec_Data, 14, i2c_timeout);
-    if(status != HAL_OK)
-	return status;
+    // Read processed data
+    status = MPU_readProcessedData(I2Cx);
 
-    DataStruct->Accel_X_RAW = (int16_t) (Rec_Data[0] << 8 | Rec_Data[1]);
-    DataStruct->Accel_Y_RAW = (int16_t) (Rec_Data[2] << 8 | Rec_Data[3]);
-    DataStruct->Accel_Z_RAW = (int16_t) (Rec_Data[4] << 8 | Rec_Data[5]);
-    temp = (int16_t) (Rec_Data[6] << 8 | Rec_Data[7]);
-    DataStruct->Gyro_X_RAW = (int16_t) (Rec_Data[8] << 8 | Rec_Data[9]);
-    DataStruct->Gyro_Y_RAW = (int16_t) (Rec_Data[10] << 8 | Rec_Data[11]);
-    DataStruct->Gyro_Z_RAW = (int16_t) (Rec_Data[12] << 8 | Rec_Data[13]);
+    // Complementary filter
+    float accelPitch = atan2(sensorData.ay, sensorData.az) * RAD2DEG;
+    float accelRoll = atan2(sensorData.ax, sensorData.az) * RAD2DEG;
 
-    DataStruct->Ax = DataStruct->Accel_X_RAW / 16384.0;
-    DataStruct->Ay = DataStruct->Accel_Y_RAW / 16384.0;
-    DataStruct->Az = DataStruct->Accel_Z_RAW / Accel_Z_corrector;
-    DataStruct->Temperature = (float) ((int16_t) temp / (float) 340.0 + (float) 36.53);
-    DataStruct->Gx = DataStruct->Gyro_X_RAW / 131.0;
-    DataStruct->Gy = DataStruct->Gyro_Y_RAW / 131.0;
-    DataStruct->Gz = DataStruct->Gyro_Z_RAW / 131.0;
+    attitude.r = _tau * (attitude.r - sensorData.gy * _dt) + (1 - _tau) * accelRoll;
+    attitude.p = _tau * (attitude.p + sensorData.gx * _dt) + (1 - _tau) * accelPitch;
+    attitude.y += sensorData.gz * _dt;
 
-    // Kalman angle solve
-    float dt = (float) (HAL_GetTick() - prev_t) / 1000;
-    prev_t = HAL_GetTick();
-    float roll;
-    float roll_sqrt = sqrt(
-            DataStruct->Accel_X_RAW * DataStruct->Accel_X_RAW + DataStruct->Accel_Z_RAW * DataStruct->Accel_Z_RAW);
-    if (roll_sqrt != 0.0) {
-        roll = atan(DataStruct->Accel_Y_RAW / roll_sqrt) * RAD_TO_DEG;
-    } else {
-        roll = 0.0;
-    }
-    float pitch = atan2(-DataStruct->Accel_X_RAW, DataStruct->Accel_Z_RAW) * RAD_TO_DEG;
-    if ((pitch < -90 && DataStruct->KalmanAngleY > 90) || (pitch > 90 && DataStruct->KalmanAngleY < -90)) {
-        KalmanY.angle = pitch;
-        DataStruct->KalmanAngleY = pitch;
-    } else {
-        DataStruct->KalmanAngleY = Kalman_getAngle(&KalmanY, pitch, DataStruct->Gy, dt);
-    }
-    if (fabs(DataStruct->KalmanAngleY) > 90)
-        DataStruct->Gx = -DataStruct->Gx;
-    DataStruct->KalmanAngleX = Kalman_getAngle(&KalmanX, roll, DataStruct->Gy, dt);
-
-    return HAL_OK;
+    return status;
 }
-
-float Kalman_getAngle(Kalman_t *Kalman, float newAngle, float newRate, float dt) {
-    float rate = newRate - Kalman->bias;
-    Kalman->angle += dt * rate;
-
-    Kalman->P[0][0] += dt * (dt * Kalman->P[1][1] - Kalman->P[0][1] - Kalman->P[1][0] + Kalman->Q_angle);
-    Kalman->P[0][1] -= dt * Kalman->P[1][1];
-    Kalman->P[1][0] -= dt * Kalman->P[1][1];
-    Kalman->P[1][1] += Kalman->Q_bias * dt;
-
-    float S = Kalman->P[0][0] + Kalman->R_measure;
-    float K[2];
-    K[0] = Kalman->P[0][0] / S;
-    K[1] = Kalman->P[1][0] / S;
-
-    float y = newAngle - Kalman->angle;
-    Kalman->angle += K[0] * y;
-    Kalman->bias += K[1] * y;
-
-    float P00_temp = Kalman->P[0][0];
-    float P01_temp = Kalman->P[0][1];
-
-    Kalman->P[0][0] -= K[0] * P00_temp;
-    Kalman->P[0][1] -= K[0] * P01_temp;
-    Kalman->P[1][0] -= K[1] * P00_temp;
-    Kalman->P[1][1] -= K[1] * P01_temp;
-
-    return Kalman->angle;
-};
 
 HAL_StatusTypeDef MPU6050_I2C_Reset(I2C_HandleTypeDef *I2Cx)
 {
