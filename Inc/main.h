@@ -70,9 +70,9 @@ typedef enum {
 #define FRONT_INDEX			0
 #define BACK_INDEX			1
 
-#define WHEEL_DIA			0.25
+#define WHEEL_DIA			0.250
 #define WHEEL_ACC_LIMIT			10.0
-#define BASE_WIDTH 			0.5
+#define BASE_WIDTH 			0.455
 
 #define BASE_LENGTH			0.9
 

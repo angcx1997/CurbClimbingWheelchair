@@ -93,8 +93,8 @@ typedef enum {
 #ifndef MIN
     #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #endif
-#define TO_RAD(x) x * M_PI / 180
-#define TO_DEG(x) x * 180 / M_PI
+#define TO_RAD(x) ((x) * 0.01745329251)
+#define TO_DEG(x) ((x) * 57.2957795131)
 
 #define BITSET(byte,nbit)   ((byte) |=  (1<<(nbit)))
 #define BITCLEAR(byte,nbit) ((byte) &= ~(1<<(nbit)))
@@ -218,7 +218,10 @@ Debug_Tick_t encoder_tick_taken = {
 
 extern wheel_velocity_t base_velocity[2];
 
+//IMU
 MPU6050_t MPU6050;
+volatile float orientation = 0;
+
 #ifdef DATA_LOGGING
 //Declare variable
 //System ID logging
@@ -273,6 +276,7 @@ static bool goto_pos(int enc, PID_t pid_t); //return true if still in the proces
 static bool in_climb_process(int front_enc, int back_enc);
 static void base_velocity_controller(float left_vel, float right_vel, PID_Struct *pid_left, PID_Struct *pid_right);
 static bool move_forward(float dist_desired);
+static bool turn_angle(float angle_desired, float curr_angle);
 /* USER CODE END FunctionPrototypes */
 
 /* Private application code --------------------------------------------------*/
@@ -290,6 +294,7 @@ void Task_Control(void *param) {
 	    runMotor(&rearMotor, 0);
 	    runMotor(&backMotor, 0);
 	    HubMotor_SendCommand(0, 0);
+	    MotorStop(&sabertooth_handler);
 	    LED_Mode_Configuration(DANGER);
 	    portEXIT_CRITICAL();
 	}
@@ -414,7 +419,7 @@ void Task_NormalDrive(void *param) {
 //	base_velocity_controller(v, v, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
 
 	if(moveForwardFlag == false){
-	    moveForwardFlag = move_forward(-0.7854);
+	    moveForwardFlag = turn_angle(-45, orientation);
 	}
 	if(moveForwardFlag == true){
 	    base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
@@ -672,6 +677,7 @@ void Task_IMU(void *param) {
 	//Sensor acquisition of IMU
 	if (MPU6050_Read_All(&hi2c1, &MPU6050) == HAL_OK) {
 	    mpu_error_count = 0;
+	    orientation = MPU6050.KalmanAngleY;
 	}
 	else {
 	    mpu_error_count++;
@@ -1146,20 +1152,20 @@ static bool climbingForward(float dist) {
     }
 }
 
-/**@brief  Base motor move forward  by preset dist.
+/**
+ * @brief  Base motor move forward  by preset dist.
  * @param  dist Distance to be moved by base wheel
  * @retval True if move forward the specified distance.
  */
-static float dist_travelled;
+
 static bool move_forward(float dist_desired) {
     static int32_t prev_enc[2];
     static bool first_loop = true;
-//    static float dist_travelled;
+    static float dist_travelled;
+    //PID setup
     static PID_t moveforward_pid = NULL;
     static struct pid_controller moveforward_ctrl;
-    float moveforward_input = 0, moveforward_output = 0;
-    float moveforward_setpoint = 0;
-
+    static float moveforward_input = 0, moveforward_output = 0, moveforward_setpoint = 0;
     float moveforward_kp = 0.4, moveforward_ki = 0.25, moveforward_kd = 0.000;
 
     if (moveforward_pid == NULL) {
@@ -1198,6 +1204,61 @@ static bool move_forward(float dist_desired) {
 	base_velocity_controller(moveforward_output, moveforward_output, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
 	prev_enc[LEFT_INDEX] = base_velocity[LEFT_INDEX].total_position;
 	prev_enc[RIGHT_INDEX] = base_velocity[RIGHT_INDEX].total_position;
+	return false;
+    }
+    else {
+	first_loop = true;
+	return true;
+    }
+}
+
+/**
+ * @brief Base motor turn on spot by preset angle in degree.
+ * @param angle_desired (in degree)target angle to be rotated
+ * @param curr_angle (in degree)latest angle when function called
+ * @return True if finish turning specified angle
+ */
+static bool turn_angle(float angle_desired, float curr_angle){
+    static bool first_loop = true;
+    static PID_t turnangle_pid = NULL;
+    static struct pid_controller turnangle_ctrl;
+    static float turnangle_input = 0, turnangle_output = 0, turnangle_setpoint = 0;
+    float turnangle_kp = 0.4, turnangle_ki = 0.25, turnangle_kd = 0.000;
+
+    curr_angle = TO_RAD(curr_angle);
+    angle_desired = TO_RAD(angle_desired);
+
+    if (turnangle_pid == NULL) {
+	turnangle_pid = pid_create(&turnangle_ctrl, &turnangle_input, &turnangle_output, &turnangle_setpoint,
+		turnangle_kp, turnangle_ki, turnangle_kd);
+	pid_limits(turnangle_pid, -0.1, 0.1);
+	pid_sample(turnangle_pid, 1);
+	pid_auto(turnangle_pid);
+    }
+
+    //Initialize static variable if first loop
+    if (first_loop) {
+	first_loop = false;
+	return false;
+    }
+
+    //Check whether pid need to be computed or the dist is within tolerable range
+    if (!first_loop && fabs(angle_desired - curr_angle) > 0.001) {
+	//Use IMU to trace angle turn
+	//Refresh PID controller
+	turnangle_input = angle_desired - curr_angle;
+	float x = cosf(turnangle_input);
+	float y = sinf(turnangle_input);
+	turnangle_input = atan2f(y, x);
+	turnangle_setpoint = 0;
+	pid_compute(turnangle_pid);
+	//Output wheel velocity
+	//Convert angular velocity to individual wheel speed
+	//Formula:
+	//V_r = w * L / 2R
+	//V_l = - V_r
+	float v = turnangle_output * BASE_WIDTH / WHEEL_DIA;
+	base_velocity_controller(-v, v, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
 	return false;
     }
     else {
