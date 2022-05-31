@@ -1259,7 +1259,7 @@ static bool move_forward(float dist_desired) {
  * @return boolean 	True if finish turning specified angle
  */
 float v_turn = 0;
-float turnangle_input = 0, turnangle_output = 0, turnangle_setpoint = 0;
+//float turnangle_input = 0, turnangle_output = 0, turnangle_setpoint = 0;
 static bool turn_angle(float angle_desired, float curr_angle) {
     static bool first_loop = true;
     static PID_t turnangle_pid = NULL;
@@ -1268,7 +1268,7 @@ static bool turn_angle(float angle_desired, float curr_angle) {
     static int32_t prev_enc[2];
     //PID setup
     static struct pid_controller turnangle_ctrl;
-//    static float turnangle_input = 0, turnangle_output = 0, turnangle_setpoint = 0;
+    static float turnangle_input = 0, turnangle_output = 0, turnangle_setpoint = 0;
     float turnangle_kp = 0.05, turnangle_ki = 0.035, turnangle_kd = 0.00;
 
     curr_angle = TO_RAD(curr_angle);
