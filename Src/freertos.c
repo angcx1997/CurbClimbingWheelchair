@@ -19,39 +19,47 @@
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
-#include "FreeRTOS.h"
-#include "task.h"
-#include "main.h"
-#include "queue.h"
-#include "semphr.h"
-#include "timers.h"
-
-/* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <adc.h>
+#include <battery.h>
+#include <bd25l.h>
+#include <briter_encoder_rs485.h>
+#include <button.h>
+#include <differentialDrive.h>
+#include <DifferentialDrivetoSabertooth.h>
+#include <encoder.h>
+#include <encoder_util.h>
+#include <FreeRTOS.h>
+#include <joystick.h>
+#include <main.h>
 #include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <mpu6050.h>
+#include <portmacro.h>
+#include <projdefs.h>
+#include <PID.h>
+#include <PID_base.h>
+#include <queue.h>
+#include <semphr.h>
 #include <stdbool.h>
-#include "adc.h"
-#include "encoder.h"
-#include "button.h"
-#include "mpu6050.h"
-#include "bd25l.h"
-#include "X2_6010S.h"
-#include "battery.h"
-//#include "wheelchair.h"
-#include "PID.h"
-#include "Sabertooth.h"
-#include "joystick.h"
-#include "differentialDrive.h"
-#include "DifferentialDrivetoSabertooth.h"
-#include "briter_encoder_rs485.h"
-#include "tfmini.h"
-#include "usb_device.h"
-#include "encoder_util.h"
-#include "usbd_cdc_if.h"
-#include "../script/DataLogger.h"
-#include "PID_base.h"
+#include <stdlib.h>
+#include <stm32f4xx_hal.h>
+#include <stm32f4xx_hal_can.h>
+#include <stm32f4xx_hal_def.h>
+#include <stm32f4xx_hal_dma.h>
+#include <stm32f4xx_hal_gpio.h>
+#include <stm32f4xx_hal_i2c.h>
+#include <stm32f4xx_hal_spi.h>
+#include <stm32f4xx_hal_tim.h>
+#include <stm32f4xx_hal_uart.h>
+#include <string.h>
+#include <sys/_stdint.h>
+#include <Sabertooth.h>
+#include <task.h>
+#include <tfmini.h>
+#include <timers.h>
+#include <usb_device.h>
+#include <X2_6010S.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -78,6 +86,15 @@ typedef enum {
     ERROR_HUB_MOTOR
 
 } sensor_fault_e;
+
+typedef enum{
+    DOCKING_STAGE_NONE = 0,
+    DOCKING_STAGE_1 = 1,
+    DOCKING_STAGE_2 = 2,
+    DOCKING_STAGE_3 = 3,
+    DOCKING_STAGE_4 = 4,
+    DOCKING_STAGE_COMPLETE = 5
+}Docking_State_e;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -163,11 +180,12 @@ int speed[2] = {
 uint8_t touch_down[2] = {
 	0
 };
+const Gear_Level gear_level = GEAR2; //change the speed level if need higher speed
 speedConfig speed_config = {
-	.min_vel = -0.25, 	//Need to be lower than |max_vel| to make sure reverse is slower and safer
-	.max_vel = 0.4,		//gear level/100
-	.min_acc = -0.8,	//max_vel*2
-	.max_acc = 0.2
+	.max_vel = (float)gear_level/100,	//gear level/100
+	.min_vel = -(float)gear_level/ 100 /2 , //Need to be lower than |max_vel| to make sure reverse is slower and safer
+	.min_acc = - (float)gear_level / 100,	//max_vel*2
+	.max_acc = (float)gear_level/ 100 / 4
 //max_vel2
 };
 
@@ -305,7 +323,6 @@ void Task_NormalDrive(void *param) {
      * Mainly control wheelchair base wheel, task run when normal driving
      */
     differentialDrive_Handler differential_drive_handler;
-    Gear_Level gear_level = GEAR1; //change the speed level if need higher speed
 
     //declare a struct to hold linear and angular velocity
     struct Command_Velocity {
@@ -407,25 +424,43 @@ void Task_NormalDrive(void *param) {
 	    voltage_level = 25;
 	}
 
-//	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
-//	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 
-	//TODO: Add PID controller here
-	//generate sine wave
-//	uint16_t sampling_rate = 1000;
-//	tick_count++;
-//	float v = 0.75 * sin(2 * M_PI * tick_count / sampling_rate);
-//	base_velocity_controller(v, v, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
+	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
+	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
+//	base_velocity_controller(differential_drive_handler.m_leftMotor, differential_drive_handler.m_rightMotor, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
 
-	if (moveForwardFlag == false) {
-	    moveForwardFlag = turn_angle(45, heading_angle);
-//	    moveForwardFlag = move_forward(1);
-	}
-	if (moveForwardFlag == true) {
+	//Docking task
+	uint8_t docking_stage = 0;
+	if(BITCHECK(docking_stage, DOCKING_STAGE_COMPLETE)){
 	    base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
-	    attitude.y = 0;
-
+	    BITCLEAR(docking_stage, DOCKING_STAGE_COMPLETE);
 	}
+	else if(BITCHECK(docking_stage, DOCKING_STAGE_1)){
+	    if (move_forward(1)){
+		BITSET(docking_stage,DOCKING_STAGE_2);
+		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
+	    }
+	}
+	else if(BITCHECK(docking_stage, DOCKING_STAGE_2)){
+	    if (turn_angle(45, 0)){
+		BITSET(docking_stage,DOCKING_STAGE_3);
+		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
+	    }
+	}
+	else if(BITCHECK(docking_stage, DOCKING_STAGE_3)){
+	    if (move_forward(1)){
+		BITSET(docking_stage,DOCKING_STAGE_NONE);
+		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
+	    }
+	}
+//	if (moveForwardFlag == false) {
+//	    moveForwardFlag = turn_angle(45, heading_angle);
+////	    moveForwardFlag = move_forward(1);
+//	}
+//	if (moveForwardFlag == true) {
+//	    base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
+//	    attitude.y = 0;
+//	}
 
 #ifdef DATA_xxxLOGGING
 	LOG_left_ref_vel.data = v;
@@ -459,10 +494,6 @@ void Task_NormalDrive(void *param) {
 //    	LOG_right_pwm.data = v;
     	LOG_left_pwm.data = differential_drive_handler.m_leftMotor;
 	LOG_right_pwm.data = differential_drive_handler.m_rightMotor;
-#else
-//	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
-//	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
-
 #endif
 	vTaskDelay(5);
     }
@@ -663,8 +694,6 @@ void Task_Switches(void *param) {
     }
 }
 
-float pitch = 0, roll = 0;
-float pitchAcc = 0, rollAcc = 0;
 void Task_IMU(void *param) {
     uint32_t mpu_error_count = 0;
     uint32_t state_count = xTaskGetTickCount();
@@ -672,11 +701,13 @@ void Task_IMU(void *param) {
     const float filter = 0.98;
     const float sampling_rate = 0.01;
     const uint8_t mpu6050_addr = WHO_AM_I_6050_ANS;
+
     //Initialize MPU6050, Reset the SDA line if cannot transmit message
     while (MPU_begin(&hi2c1, mpu6050_addr, AFSR_2G, GFSR_250DPS, filter, sampling_rate) != HAL_OK) {
 	if (xTaskGetTickCount() - state_count > 50)
 	    if (MPU6050_I2C_Reset(&hi2c1) == HAL_ERROR) {
-		Error_Handler();
+		lifting_mode = DANGER;
+		xTaskNotify(task_control, ERROR_IMU, eSetValueWithOverwrite);
 	    }
     }
 
@@ -684,12 +715,12 @@ void Task_IMU(void *param) {
 
     while (1) {
 	//Sensor acquisition of IMU
-	if (MPU_calcAttitude(&hi2c1) != HAL_OK) {
-	    mpu_error_count++;
-	}
-	else {
+	if (MPU_calcAttitude(&hi2c1) == HAL_OK) {
 	    mpu_error_count = 0;
 	    heading_angle = attitude.y;
+	}
+	else {
+	    mpu_error_count++;
 	}
 
 	if (mpu_error_count > 10) {
@@ -1173,7 +1204,7 @@ static bool move_forward(float dist_desired) {
     static float moveforward_input = 0, moveforward_output = 0, moveforward_setpoint = 0;
     float moveforward_kp = 0.4, moveforward_ki = 0.25, moveforward_kd = 0.000;
 
-    //A scaling factor to account for overshooting
+    //A scaling factor to account for distance correction (slip, friction, inaccurate wheel diameter measurement, etc)
     //0.97 is obtained through trial and error by running wheelchair with setpoint of 1m.
     dist_desired *= 0.97;
 
@@ -1224,11 +1255,11 @@ static bool move_forward(float dist_desired) {
 /**
  * @brief Base motor turn on spot by preset angle in degree.
  * @param angle_desired (in degree)target angle to be rotated[-180,180]
- * @param curr_angle (in degree)latest angle when function called[-180,180]
- * @return True if finish turning specified angle
+ * @param curr_angle 	(in degree)latest angle when function called[-180,180]
+ * @return boolean 	True if finish turning specified angle
  */
 float v_turn = 0;
-//float turnangle_input = 0, turnangle_output = 0, turnangle_setpoint = 0;
+float turnangle_input = 0, turnangle_output = 0, turnangle_setpoint = 0;
 static bool turn_angle(float angle_desired, float curr_angle) {
     static bool first_loop = true;
     static PID_t turnangle_pid = NULL;
@@ -1237,16 +1268,16 @@ static bool turn_angle(float angle_desired, float curr_angle) {
     static int32_t prev_enc[2];
     //PID setup
     static struct pid_controller turnangle_ctrl;
-    static float turnangle_input = 0, turnangle_output = 0, turnangle_setpoint = 0;
-    float turnangle_kp = 0.1, turnangle_ki = 0.05, turnangle_kd = 0.00;
+//    static float turnangle_input = 0, turnangle_output = 0, turnangle_setpoint = 0;
+    float turnangle_kp = 0.05, turnangle_ki = 0.035, turnangle_kd = 0.00;
 
     curr_angle = TO_RAD(curr_angle);
-    angle_desired = TO_RAD(angle_desired);
+    angle_desired = TO_RAD(angle_desired) * 0.97;
 
     if (turnangle_pid == NULL) {
 	turnangle_pid = pid_create(&turnangle_ctrl, &turnangle_input, &turnangle_output, &turnangle_setpoint,
 		turnangle_kp, turnangle_ki, turnangle_kd);
-	pid_limits(turnangle_pid, -0.15, 0.15);
+	pid_limits(turnangle_pid, -0.1, 0.1);
 	pid_sample(turnangle_pid, 1);
 	pid_auto(turnangle_pid);
     }
@@ -1303,6 +1334,8 @@ static bool turn_angle(float angle_desired, float curr_angle) {
     if (first_loop) {
 	first_loop = false;
 	angle_travelled = 0;
+	prev_enc[LEFT_INDEX] = base_velocity[LEFT_INDEX].total_position;
+	prev_enc[RIGHT_INDEX] = base_velocity[RIGHT_INDEX].total_position;
 	return false;
     }
 
@@ -1456,10 +1489,10 @@ static bool in_climb_process(int front_enc, int back_enc) {
 
 /**
  * Use for velocity PID control loop
- * @param left_vel left reference velocity
- * @param right_vel right reference velocity
- * @param pid_left left pid struct
- * @param pid_right right pid struct
+ * @param left_vel 	left reference velocity
+ * @param right_vel	right reference velocity
+ * @param pid_left 	left pid struct
+ * @param pid_right	right pid struct
  */
 static void base_velocity_controller(float left_vel, float right_vel, PID_Struct *pid_left, PID_Struct *pid_right) {
     float pwm_volt[2] = {

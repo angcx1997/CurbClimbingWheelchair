@@ -52,6 +52,7 @@ void DDrive_SpeedMapping(differentialDrive_Handler* dd_handler, int XValue, int 
 		x = 0.5 * x;
 	float tmp_r = y-x;
 	float tmp_l = y+x;
+
 	dd_handler->m_leftMotor = tmp_l * ((float)gear_level/100.0);
 	dd_handler->m_rightMotor = tmp_r * ((float)gear_level/100.0);
 

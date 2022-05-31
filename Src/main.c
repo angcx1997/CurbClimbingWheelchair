@@ -230,7 +230,6 @@ int main(void) {
     /* USER CODE BEGIN 2 */
     Peripheral_Init();
 
-
     delay_us_init(&htim7);
     //Initialize front and back climbing position controller
     frontClimb_pid = pid_create(&frontClimb_ctrl, &frontClimb_input, &frontClimb_output, &frontClimb_setpoint,
