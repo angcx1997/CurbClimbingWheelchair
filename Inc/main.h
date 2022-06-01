@@ -57,6 +57,7 @@ typedef enum {
     STOP,
     DANGER,
     CURB_DETECTED,
+    DOCKING
 } Operation_Mode;
 
 /* USER CODE END ET */

@@ -84,15 +84,24 @@ typedef enum {
     ERROR_CLIMB_ENCODER,
     ERROR_IMU,
     ERROR_HUB_MOTOR
-
 } sensor_fault_e;
 
+typedef enum {
+    TASK_IMU_READY		= (1 << 0),
+    TASK_SWITCHES_READY		= (1 << 1),
+    TASK_CLIMB_ENCODER_READY	= (1 << 2),
+    TASK_WHEEL_ENCODER_READY	= (1 << 3),
+    TASK_CURB_DETECTOR_READY	= (1 << 4),
+    TASK_JOYSTICK_READY		= (1 << 5)
+} task_state_e;
+
+
 typedef enum{
-    DOCKING_STAGE_NONE = 0,
-    DOCKING_STAGE_1 = 1,
-    DOCKING_STAGE_2 = 2,
-    DOCKING_STAGE_3 = 3,
-    DOCKING_STAGE_4 = 4,
+    DOCKING_STAGE_NONE =0,
+    DOCKING_STAGE_1 = 	1,
+    DOCKING_STAGE_2 = 	2,
+    DOCKING_STAGE_3 = 	3,
+    DOCKING_STAGE_4 = 	4,
     DOCKING_STAGE_COMPLETE = 5
 }Docking_State_e;
 /* USER CODE END PTD */
@@ -118,6 +127,8 @@ typedef enum{
 #define BITCHECK(byte,nbit) ((byte) & 1<<(nbit))
 
 #define SIGN(x) (((x)>=0)?1:-1)
+
+#define START_CLIMBING_BIT 1
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -302,9 +313,25 @@ void Task_Control(void *param) {
     /*
      * Pre-empt all other task and immediately stop running wheel
      */
-    uint32_t ulNotifiedValue;
+    uint32_t ulNotifiedValue = 0;
+    bool is_init = false;
+
+    const uint32_t task_to_wait = TASK_IMU_READY | TASK_CLIMB_ENCODER_READY | TASK_CURB_DETECTOR_READY \
+			    | TASK_JOYSTICK_READY | TASK_SWITCHES_READY | TASK_WHEEL_ENCODER_READY;
+
     while (1) {
+	if(!is_init){
+	    //Wait until all sensor task is configured
+	    xTaskNotifyWait(0, 0, &ulNotifiedValue, portMAX_DELAY);
+	    if(ulNotifiedValue == task_to_wait){
+		xTaskNotify(task_climbing,0,eNoAction);
+		is_init = true;
+	    }
+	    continue;
+	}
+
 	xTaskNotifyWait(0, 0, &ulNotifiedValue, portMAX_DELAY);
+
 	if (lifting_mode == DANGER) {
 	    portENTER_CRITICAL();
 	    vTaskSuspendAll();
@@ -332,6 +359,9 @@ void Task_NormalDrive(void *param) {
     struct Command_Velocity cmd_vel = {
 	    0, 0
     };
+
+    //Used to indicate docking phase
+    uint8_t docking_stage = DOCKING_STAGE_NONE;
 
     //Initialize base wheel
     int motor_output_1 = 0;
@@ -362,7 +392,7 @@ void Task_NormalDrive(void *param) {
     PID_setMinIOutput(&base_pid[LEFT_INDEX], -max_i_output);
     PID_setFrequency(&base_pid[LEFT_INDEX], pid_freq);
 
-    int moveForwardFlag = false;
+    xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
     while (1) {
 	if (lifting_mode == NORMAL) {
 	    //When user in normal driving mode
@@ -408,6 +438,38 @@ void Task_NormalDrive(void *param) {
 	    xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
 	    continue;
 	}
+	else if (lifting_mode == DOCKING){
+	    //Docking task
+	    if (BITCHECK(docking_stage, DOCKING_STAGE_COMPLETE)) {
+		base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
+		BITCLEAR(docking_stage, DOCKING_STAGE_COMPLETE);
+	    }
+	    else if (BITCHECK(docking_stage, DOCKING_STAGE_1)) {
+		if (move_forward(1)) {
+		    BITSET(docking_stage, DOCKING_STAGE_2);
+		    BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
+		    BITCLEAR(docking_stage, DOCKING_STAGE_1);
+		}
+	    }
+	    else if (BITCHECK(docking_stage, DOCKING_STAGE_2)) {
+		if (turn_angle(45, 0)) {
+		    BITSET(docking_stage, DOCKING_STAGE_3);
+		    BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
+		    BITCLEAR(docking_stage, DOCKING_STAGE_2);
+		}
+	    }
+	    else if (BITCHECK(docking_stage, DOCKING_STAGE_3)) {
+		if (move_forward(1)) {
+		    BITSET(docking_stage, DOCKING_STAGE_NONE);
+		    BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
+		    BITCLEAR(docking_stage, DOCKING_STAGE_3);
+		}
+	    }else if (BITCHECK(docking_stage, DOCKING_STAGE_NONE)) {
+		    lifting_mode = NORMAL;
+		    BITCLEAR(docking_stage, DOCKING_STAGE_NONE);
+		}
+	    continue;
+	}
 	else {
 	    //If not in driving mode
 	    MotorStop(&sabertooth_handler);
@@ -424,38 +486,12 @@ void Task_NormalDrive(void *param) {
 	    voltage_level = 25;
 	}
 
-
 	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
 	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
-//	base_velocity_controller(differential_drive_handler.m_leftMotor, differential_drive_handler.m_rightMotor, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
 
-	//Docking task
-	uint8_t docking_stage = 0;
-	if(BITCHECK(docking_stage, DOCKING_STAGE_COMPLETE)){
-	    base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
-	    BITCLEAR(docking_stage, DOCKING_STAGE_COMPLETE);
-	}
-	else if(BITCHECK(docking_stage, DOCKING_STAGE_1)){
-	    if (move_forward(1)){
-		BITSET(docking_stage,DOCKING_STAGE_2);
-		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
-	    }
-	}
-	else if(BITCHECK(docking_stage, DOCKING_STAGE_2)){
-	    if (turn_angle(45, 0)){
-		BITSET(docking_stage,DOCKING_STAGE_3);
-		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
-	    }
-	}
-	else if(BITCHECK(docking_stage, DOCKING_STAGE_3)){
-	    if (move_forward(1)){
-		BITSET(docking_stage,DOCKING_STAGE_NONE);
-		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
-	    }
-	}
 //	if (moveForwardFlag == false) {
 //	    moveForwardFlag = turn_angle(45, heading_angle);
-////	    moveForwardFlag = move_forward(1);
+//	    moveForwardFlag = move_forward(1);
 //	}
 //	if (moveForwardFlag == true) {
 //	    base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
@@ -516,7 +552,11 @@ void Task_Wheel_Encoder(void *param) {
     TickType_t tick = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(5); //execution period
 
+    vTaskDelay(100);
+    xTaskNotify(task_control, TASK_WHEEL_ENCODER_READY, eSetBits);
+
     while (1) {
+
 	/*Data Acquisition*/
 	HAL_StatusTypeDef briter_dma_status;
 	if (base_encoder_tx_flag % 2 == 0) {
@@ -568,6 +608,10 @@ void Task_Wheel_Encoder(void *param) {
 }
 
 void Task_Curb_Detector(void *param) {
+
+    vTaskDelay(100);
+    xTaskNotify(task_control, TASK_CURB_DETECTOR_READY, eSetBits);
+
     while (1) {
 	//Distance sensor data acquisition is managed by DMA
 	HAL_UART_Receive_DMA(&huart1, tf_rx_buf, TFMINI_RX_SIZE);
@@ -585,10 +629,14 @@ void Task_Climb_Encoder(void *param) {
     //Initialize climbing encoder sensor and start front distance sensor data reception
     ENCODER_Init();
 
-    //Only start all operation after sensor are turned on.
-    xTaskNotify(task_climbing, 0, eNoAction);
+    vTaskDelay(100);
+    xTaskNotify(task_control, TASK_CLIMB_ENCODER_READY, eSetBits);
 
     while (1) {
+	//Stop the encoder from running if not in climbing mode
+	if(lifting_mode != CLIMB_DOWN || lifting_mode != CLIMB_UP || lifting_mode != RETRACTION)
+
+
 	/*Climbing Sensor Data Acquisition and Processing*/
 	/*Data Acquisition*/
 	//Read encoder data
@@ -648,6 +696,9 @@ void Task_Switches(void *param) {
 
     TickType_t tick = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(100); //execution period
+
+    xTaskNotify(task_control, TASK_SWITCHES_READY, eSetBits);
+
     while (1) {
 	//Button user interface
 	Button_FilteredInput(&button1, 30);
@@ -669,6 +720,10 @@ void Task_Switches(void *param) {
 	if (button_state.button2 == 1) {
 	    lifting_mode = DANGER;
 	    xTaskNotify(task_control, 0, eNoAction);
+	}
+
+	if (button_state.button3 == 1) {
+	    xTaskNotify(task_climbing, (1 << START_CLIMBING_BIT), eSetValueWithOverwrite);
 	}
 
 	//Read limit switch state
@@ -713,6 +768,8 @@ void Task_IMU(void *param) {
 
     MPU_calibrateGyro(&hi2c1, 100);
 
+    xTaskNotify(task_control, TASK_IMU_READY, eSetBits);
+
     while (1) {
 	//Sensor acquisition of IMU
 	if (MPU_calcAttitude(&hi2c1) == HAL_OK) {
@@ -744,6 +801,8 @@ void Task_Joystick(void *param) {
 
     //Initialize AD7606
     ADC_Init();
+
+    xTaskNotify(task_control, TASK_JOYSTICK_READY, eSetBits);
 
     while (1) {
 	ADC_DataRequest();
@@ -785,6 +844,11 @@ void Task_Climbing(void *param) {
     uint8_t button_prev_state = 0;
     uint8_t climb_first_iteration = 1; //1 if 1st climb iteration
 
+    //Store notification value
+    uint32_t notification = 0;
+    uint32_t climbing_start_mask = 1 << START_CLIMBING_BIT;
+    notification = climbing_start_mask;
+
     Operation_Mode dummy_mode = EMPTY; //to store climbing up or down state
 
     uint32_t front_climbDown_enc = 0;
@@ -798,8 +862,7 @@ void Task_Climbing(void *param) {
     runMotor(&rearMotor, 0);
     runMotor(&backMotor, 0);
     emBrakeMotor(0);
-
-    xTaskNotifyWait(0x00, ULONG_MAX, (uint32_t*) 0, portMAX_DELAY);
+    xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
     while (1) {
 #ifdef BUTTON_CONTROL
 	/*Button Control*/
@@ -826,6 +889,10 @@ void Task_Climbing(void *param) {
 #endif
 
 #ifdef ONE_BUTTON_CONTROL_CURB_CLIMBING
+	if(notification != climbing_start_mask){
+	    xTaskNotifyWait( 0, 0, &notification, portMAX_DELAY);
+	}
+
 	//when button3 is pressed, Extend climbing wheel until both wheel touches the ground
 	if ((button_state.button3 == 1 || button_prev_state == 1) && climb_first_iteration == 1) {
 	    button_prev_state = 1;
@@ -1005,6 +1072,7 @@ void Task_Climbing(void *param) {
 	    speed[BACK_INDEX] = 0;
 	    climb_first_iteration = 1;
 	    xTaskNotify(task_normalDrive, 0, eNoAction);
+	    ulTaskNotifyValueClear(NULL, notification);
 	}
 	//**********************************************************************************//
 
@@ -1101,13 +1169,13 @@ void Task_Battery(void *param) {
 	}
 
 	if (uxQueueSpacesAvailable(queue_battery_level) == 0) {
-	    //force the top message out
+	    //pop the top message out
 	    uint8_t dummy;
 	    xQueueReceive(queue_battery_level, &dummy, 0);
 	}
 	xQueueSend(queue_battery_level, (void* )&voltage_level, 0);
 	battery_level = voltage_level / 100;
-	vTaskDelay(pdMS_TO_TICKS(10000));
+	vTaskDelay(pdMS_TO_TICKS(5000));
 	//Error Handling
 	if (error_count > 50) {
 	    //Cannot read from BMS
