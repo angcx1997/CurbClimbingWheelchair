@@ -59,9 +59,9 @@
 #include <timers.h>
 #include <usb_device.h>
 #include <X2_6010S.h>
+#include <../script/UnionDataStruct.h>
 
 /* USER CODE END Includes */
-
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 typedef struct {
@@ -294,6 +294,9 @@ float pwm_volt[2]; /*!< PWM voltage to be input into motor */
 float reference_vel[2]; /*!< Setpoint for PID controller */
 float max_i_output = 20; /*!< To clamp integral output */
 float pid_freq = 1000;
+
+//Docking commmand
+float docking_cmd[4];
 /* USER CODE END Variables */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -342,6 +345,7 @@ void Task_Control(void *param) {
 	    LED_Mode_Configuration(DANGER);
 	    portEXIT_CRITICAL();
 	}
+
     }
 }
 
@@ -535,6 +539,13 @@ void Task_NormalDrive(void *param) {
     }
 }
 
+void Task_Docking(void* param){
+    while(1){
+
+    }
+}
+
+
 void Task_Wheel_Encoder(void *param) {
     //Initialize encoder sensor for base wheel
     BRITER_RS485_Init(&(base_encoder[0]), 0x02, &huart4);
@@ -556,7 +567,6 @@ void Task_Wheel_Encoder(void *param) {
     xTaskNotify(task_control, TASK_WHEEL_ENCODER_READY, eSetBits);
 
     while (1) {
-
 	/*Data Acquisition*/
 	HAL_StatusTypeDef briter_dma_status;
 	if (base_encoder_tx_flag % 2 == 0) {

@@ -118,6 +118,7 @@ const osThreadAttr_t defaultTask_attributes = {
 
 /* Task Handler */
 TaskHandle_t task_control;
+TaskHandle_t task_docking;
 TaskHandle_t task_normalDrive;
 TaskHandle_t task_joystick;
 TaskHandle_t task_climbing;
@@ -190,7 +191,7 @@ float backClimb_kp = 0.3, backClimb_ki = 0.004, backClimb_kd = 0.00001;
 uint16_t distance = 0;
 uint16_t distanceNoNoise;
 int diff;
-uint8_t usbBuffer[1];
+uint8_t usbBuffer[100];
 
 static uint16_t prev_dist = 0;
 extern Operation_Mode lifting_mode;
@@ -280,6 +281,8 @@ int main(void) {
     /* USER CODE BEGIN RTOS_THREADS */
     /* add threads, ... */
     status = xTaskCreate(Task_Control, "Control Task", 250, NULL, 5, &task_control);
+    configASSERT(status == pdPASS);
+    status = xTaskCreate(Task_Docking, "Docking Task", 250, NULL, 5, &task_docking);
     configASSERT(status == pdPASS);
     status = xTaskCreate(Task_Climbing, "Climbing Task", 250, NULL, 2, &task_climbing);
     configASSERT(status == pdPASS);

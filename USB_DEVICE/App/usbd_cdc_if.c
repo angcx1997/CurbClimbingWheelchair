@@ -23,7 +23,7 @@
 #include "usbd_cdc_if.h"
 
 /* USER CODE BEGIN INCLUDE */
-
+#include "main.h"
 /* USER CODE END INCLUDE */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -32,7 +32,9 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-extern uint8_t cmd;
+extern float docking_cmd[4];
+extern Operation_Mode lifting_mode;
+extern TaskHandle_t task_control;
 /* USER CODE END PV */
 
 /** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
@@ -63,6 +65,11 @@ extern uint8_t usbBuffer[64];
   */
 
 /* USER CODE BEGIN PRIVATE_DEFINES */
+#define USB_READY 0xFB
+#define USB_SOI 0xAB
+#define USB_EOI 0xFB
+#define USB_RX_SUCCESS 0x88
+#define USB_RX_FAIL 0x44
 /* USER CODE END PRIVATE_DEFINES */
 
 /**
@@ -262,6 +269,8 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
+  uint8_t tx_data = 0;
+
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
   USBD_CDC_ReceivePacket(&hUsbDeviceFS);
 
@@ -269,6 +278,32 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
   uint8_t len = (uint8_t)*Len;
   memcpy(usbBuffer, Buf, len);  // copy the data to the buffer
   memset(Buf, '\0', len);   // clear the Buf also
+
+  if (usbBuffer[0] == USB_READY){
+      //Indicate connection is established and ready to receive data
+      tx_data = USB_READY;
+      CDC_Transmit_FS(&tx_data, sizeof(tx_data));
+  }
+  if(usbBuffer[0] == USB_SOI){
+      //Check data length and calculate checksum
+      if(USB_EOI == usbBuffer[2 + usbBuffer[1]]){
+	  tx_data = USB_RX_SUCCESS;
+	  for(int i = 0; i < 4; i++){
+	      memcpy(&docking_cmd[i], usbBuffer+2+i*4, sizeof(float));
+	  }
+	  CDC_Transmit_FS(&tx_data, sizeof(tx_data));
+	  //If data receive is correct, initiate docking mode
+	  lifting_mode = DOCKING;
+	  xTaskNotifyFromISR(task_control, 0, 0, eNoAction);
+      }
+      else{
+	  tx_data = USB_RX_FAIL;
+	  CDC_Transmit_FS(&tx_data, sizeof(tx_data));
+      }
+
+  }
+  memset(usbBuffer, '\0', len);
+
 
   return (USBD_OK);
   /* USER CODE END 6 */

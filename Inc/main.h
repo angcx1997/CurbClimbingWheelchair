@@ -42,6 +42,8 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "FreeRTOS.h"
+#include "task.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -111,6 +113,7 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 void Task_Control(void* param);
+void Task_Docking(void* param);
 void Task_NormalDrive(void *param);
 void Task_Joystick(void *param);
 void Task_Climbing(void *param);
