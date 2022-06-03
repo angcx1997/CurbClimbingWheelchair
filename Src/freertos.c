@@ -407,6 +407,7 @@ void Task_NormalDrive(void *param) {
 	    //When user in normal driving mode
 	    LED_Mode_Configuration(NORMAL);
 
+//	    HubMotor_SendCommand(1, 1);
 	    //Stop buzzer timer if user mode has return to normal
 	    if (xTimerIsTimerActive(timer_buzzer) == pdTRUE) {
 		xTimerStop(timer_buzzer, 1);
@@ -445,39 +446,6 @@ void Task_NormalDrive(void *param) {
 	    //When front distance sensor
 	    MotorStop(&sabertooth_handler);
 	    xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
-	    continue;
-	}
-	else if (lifting_mode == DOCKING) {
-	    //Docking task
-	    if (BITCHECK(docking_stage, DOCKING_STAGE_COMPLETE)) {
-		base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
-		BITCLEAR(docking_stage, DOCKING_STAGE_COMPLETE);
-	    }
-	    else if (BITCHECK(docking_stage, DOCKING_STAGE_1)) {
-		if (move_forward(1)) {
-		    BITSET(docking_stage, DOCKING_STAGE_2);
-		    BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
-		    BITCLEAR(docking_stage, DOCKING_STAGE_1);
-		}
-	    }
-	    else if (BITCHECK(docking_stage, DOCKING_STAGE_2)) {
-		if (turn_angle(45, 0)) {
-		    BITSET(docking_stage, DOCKING_STAGE_3);
-		    BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
-		    BITCLEAR(docking_stage, DOCKING_STAGE_2);
-		}
-	    }
-	    else if (BITCHECK(docking_stage, DOCKING_STAGE_3)) {
-		if (move_forward(1)) {
-		    BITSET(docking_stage, DOCKING_STAGE_NONE);
-		    BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
-		    BITCLEAR(docking_stage, DOCKING_STAGE_3);
-		}
-	    }
-	    else if (BITCHECK(docking_stage, DOCKING_STAGE_NONE)) {
-		lifting_mode = NORMAL;
-		BITCLEAR(docking_stage, DOCKING_STAGE_NONE);
-	    }
 	    continue;
 	}
 	else {
@@ -549,7 +517,6 @@ void Task_Docking(void *param) {
     //Store notification value
     uint32_t notification = 0;
     uint32_t docking_start_mask = 1 << START_DOCKING_BIT;
-//    notification = docking_start_mask;
     //Used to indicate docking phase
     uint8_t docking_stage = DOCKING_STAGE_NONE;
     while (1) {
@@ -562,34 +529,44 @@ void Task_Docking(void *param) {
 	if (BITCHECK(docking_stage, DOCKING_STAGE_COMPLETE)) {
 	    base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
 	    BITCLEAR(docking_stage, DOCKING_STAGE_COMPLETE);
+	    vTaskDelay(500);
 	}
 	else if (BITCHECK(docking_stage, DOCKING_STAGE_1)) {
-//	    if (move_forward(1)) {
+	    if (turn_angle(docking_cmd[0], 0)) {
 		BITSET(docking_stage, DOCKING_STAGE_2);
 		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
 		BITCLEAR(docking_stage, DOCKING_STAGE_1);
-//	    }
+	    }
 	}
 	else if (BITCHECK(docking_stage, DOCKING_STAGE_2)) {
-//	    if (turn_angle(45, 0)) {
+	    if (move_forward(docking_cmd[1])){
 		BITSET(docking_stage, DOCKING_STAGE_3);
 		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
 		BITCLEAR(docking_stage, DOCKING_STAGE_2);
-//	    }
+	    }
 	}
 	else if (BITCHECK(docking_stage, DOCKING_STAGE_3)) {
-//	    if (move_forward(1)) {
-		BITSET(docking_stage, DOCKING_STAGE_NONE);
+	    if (turn_angle(docking_cmd[2], 0)) {
+		BITSET(docking_stage, DOCKING_STAGE_4);
 		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
 		BITCLEAR(docking_stage, DOCKING_STAGE_3);
-//	    }
+	    }
+	}
+	else if (BITCHECK(docking_stage, DOCKING_STAGE_4)) {
+	    if (move_forward(docking_cmd[3])) {
+		BITSET(docking_stage, DOCKING_STAGE_NONE);
+		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
+		BITCLEAR(docking_stage, DOCKING_STAGE_4);
+	    }
 	}
 	else if (BITCHECK(docking_stage, DOCKING_STAGE_NONE)) {
 	    lifting_mode = NORMAL;
 	    BITCLEAR(docking_stage, DOCKING_STAGE_NONE);
+	    vTaskDelay(500);
 	    xTaskNotify(task_normalDrive, 0, eNoAction);
 	    notification = 0;
 	}
+	vTaskDelay(1);
 
     }
 }
@@ -652,9 +629,6 @@ void Task_Wheel_Encoder(void *param) {
 		}
 	    }
 	}
-	else {
-	    continue;
-	}
 	/*Error Handling*/
 	//If encoder is faulty, no data reception, suspend all task
 	if ((xTaskGetTickCount() - last_rs485_enc_t[0]) > 1000 || (xTaskGetTickCount() - last_rs485_enc_t[1]) > 1000) {
@@ -687,17 +661,18 @@ void Task_Climb_Encoder(void *param) {
     //Initialize climbing encoder sensor and start front distance sensor data reception
     ENCODER_Init();
 
+    //Reset Motor encoder
+//    ENCODER_Set_ZeroPosition(&encoderFront);
+//    ENCODER_Set_ZeroPosition(&encoderBack);
+
     vTaskDelay(100);
     xTaskNotify(task_control, TASK_CLIMB_ENCODER_READY, eSetBits);
 
     while (1) {
-	//Stop the encoder from running if not in climbing mode
-	if (lifting_mode != CLIMB_DOWN || lifting_mode != CLIMB_UP || lifting_mode != RETRACTION)
-
-	    /*Climbing Sensor Data Acquisition and Processing*/
-	    /*Data Acquisition*/
-	    //Read encoder data
-	    ENCODER_Get_Angle(&encoderBack);
+	/*Climbing Sensor Data Acquisition and Processing*/
+	/*Data Acquisition*/
+	//Read encoder data
+	ENCODER_Get_Angle(&encoderBack);
 	ENCODER_Get_Angle(&encoderFront);
 
 	/*Error Handling*/
@@ -766,6 +741,7 @@ void Task_Switches(void *param) {
 	button_state.button2 = (button2.state == 1) ? 1 : 0;
 	button_state.button3 = (button3.state == 1) ? 1 : 0;
 
+#ifndef BUTTON_CONTROL
 	//Use button 1 to get out of STOP mode and enter into curb detected
 	//Where the system is only allowed to move backward
 	if (button_state.button1 == 1 && lifting_mode == STOP) {
@@ -782,7 +758,7 @@ void Task_Switches(void *param) {
 	if (button_state.button3 == 1) {
 	    xTaskNotify(task_climbing, (1 << START_CLIMBING_BIT), eSetValueWithOverwrite);
 	}
-
+#endif
 	//Read limit switch state
 	Button_FilteredInput(&rearLS1, 5);
 	Button_FilteredInput(&rearLS2, 5);
@@ -919,7 +895,7 @@ void Task_Climbing(void *param) {
     runMotor(&rearMotor, 0);
     runMotor(&backMotor, 0);
     emBrakeMotor(0);
-//    xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
+
     while (1) {
 #ifdef BUTTON_CONTROL
 	/*Button Control*/
@@ -1327,7 +1303,7 @@ static bool move_forward(float dist_desired) {
     static PID_t moveforward_pid = NULL;
     static struct pid_controller moveforward_ctrl;
     static float moveforward_input = 0, moveforward_output = 0, moveforward_setpoint = 0;
-    float moveforward_kp = 0.4, moveforward_ki = 0.25, moveforward_kd = 0.000;
+    float moveforward_kp = 0.4, moveforward_ki = 0.2, moveforward_kd = 0.000;
 
     //A scaling factor to account for distance correction (slip, friction, inaccurate wheel diameter measurement, etc)
     //0.97 is obtained through trial and error by running wheelchair with setpoint of 1m.
@@ -1394,7 +1370,7 @@ static bool turn_angle(float angle_desired, float curr_angle) {
     //PID setup
     static struct pid_controller turnangle_ctrl;
     static float turnangle_input = 0, turnangle_output = 0, turnangle_setpoint = 0;
-    float turnangle_kp = 0.05, turnangle_ki = 0.035, turnangle_kd = 0.00;
+    float turnangle_kp = 0.5, turnangle_ki = 0.25, turnangle_kd = 0.00;
 
     curr_angle = TO_RAD(curr_angle);
     angle_desired = TO_RAD(angle_desired) * 0.97;
