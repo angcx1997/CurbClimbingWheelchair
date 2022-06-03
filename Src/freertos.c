@@ -87,23 +87,22 @@ typedef enum {
 } sensor_fault_e;
 
 typedef enum {
-    TASK_IMU_READY		= (1 << 0),
-    TASK_SWITCHES_READY		= (1 << 1),
-    TASK_CLIMB_ENCODER_READY	= (1 << 2),
-    TASK_WHEEL_ENCODER_READY	= (1 << 3),
-    TASK_CURB_DETECTOR_READY	= (1 << 4),
-    TASK_JOYSTICK_READY		= (1 << 5)
+    TASK_IMU_READY = (1 << 0),
+    TASK_SWITCHES_READY = (1 << 1),
+    TASK_CLIMB_ENCODER_READY = (1 << 2),
+    TASK_WHEEL_ENCODER_READY = (1 << 3),
+    TASK_CURB_DETECTOR_READY = (1 << 4),
+    TASK_JOYSTICK_READY = (1 << 5)
 } task_state_e;
 
-
-typedef enum{
-    DOCKING_STAGE_NONE =0,
-    DOCKING_STAGE_1 = 	1,
-    DOCKING_STAGE_2 = 	2,
-    DOCKING_STAGE_3 = 	3,
-    DOCKING_STAGE_4 = 	4,
+typedef enum {
+    DOCKING_STAGE_NONE = 0,
+    DOCKING_STAGE_1 = 1,
+    DOCKING_STAGE_2 = 2,
+    DOCKING_STAGE_3 = 3,
+    DOCKING_STAGE_4 = 4,
     DOCKING_STAGE_COMPLETE = 5
-}Docking_State_e;
+} Docking_State_e;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -129,6 +128,7 @@ typedef enum{
 #define SIGN(x) (((x)>=0)?1:-1)
 
 #define START_CLIMBING_BIT 1
+#define START_DOCKING_BIT 2
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -163,6 +163,7 @@ extern DMA_HandleTypeDef hdma_usart6_rx;
 extern DMA_HandleTypeDef hdma_usart6_tx;
 
 extern TaskHandle_t task_control;
+extern TaskHandle_t task_docking;
 extern TaskHandle_t task_normalDrive;
 extern TaskHandle_t task_joystick;
 extern TaskHandle_t task_climbing;
@@ -193,10 +194,10 @@ uint8_t touch_down[2] = {
 };
 const Gear_Level gear_level = GEAR2; //change the speed level if need higher speed
 speedConfig speed_config = {
-	.max_vel = (float)gear_level/100,	//gear level/100
-	.min_vel = -(float)gear_level/ 100 /2 , //Need to be lower than |max_vel| to make sure reverse is slower and safer
-	.min_acc = - (float)gear_level / 100,	//max_vel*2
-	.max_acc = (float)gear_level/ 100 / 4
+	.max_vel = (float) gear_level / 100,	//gear level/100
+	.min_vel = -(float) gear_level / 100 / 2, //Need to be lower than |max_vel| to make sure reverse is slower and safer
+	.min_acc = -(float) gear_level / 100,	//max_vel*2
+	.max_acc = (float) gear_level / 100 / 4
 //max_vel2
 };
 
@@ -319,20 +320,22 @@ void Task_Control(void *param) {
     uint32_t ulNotifiedValue = 0;
     bool is_init = false;
 
-    const uint32_t task_to_wait = TASK_IMU_READY | TASK_CLIMB_ENCODER_READY | TASK_CURB_DETECTOR_READY \
-			    | TASK_JOYSTICK_READY | TASK_SWITCHES_READY | TASK_WHEEL_ENCODER_READY;
+    const uint32_t task_to_wait = TASK_IMU_READY | TASK_CLIMB_ENCODER_READY | TASK_CURB_DETECTOR_READY
+	    | TASK_JOYSTICK_READY | TASK_SWITCHES_READY | TASK_WHEEL_ENCODER_READY;
 
     while (1) {
-	if(!is_init){
+	//Initialization process
+	if (!is_init) {
 	    //Wait until all sensor task is configured
 	    xTaskNotifyWait(0, 0, &ulNotifiedValue, portMAX_DELAY);
-	    if(ulNotifiedValue == task_to_wait){
-		xTaskNotify(task_climbing,0,eNoAction);
+	    if (ulNotifiedValue == task_to_wait) {
+		xTaskNotify(task_climbing, (1 << START_CLIMBING_BIT), eSetValueWithOverwrite);
 		is_init = true;
 	    }
 	    continue;
 	}
 
+	//Master control process
 	xTaskNotifyWait(0, 0, &ulNotifiedValue, portMAX_DELAY);
 
 	if (lifting_mode == DANGER) {
@@ -345,7 +348,9 @@ void Task_Control(void *param) {
 	    LED_Mode_Configuration(DANGER);
 	    portEXIT_CRITICAL();
 	}
-
+	else if (lifting_mode == DOCKING){
+	    xTaskNotify(task_docking, (1 << START_DOCKING_BIT), eSetValueWithOverwrite );
+	}
     }
 }
 
@@ -442,7 +447,7 @@ void Task_NormalDrive(void *param) {
 	    xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);
 	    continue;
 	}
-	else if (lifting_mode == DOCKING){
+	else if (lifting_mode == DOCKING) {
 	    //Docking task
 	    if (BITCHECK(docking_stage, DOCKING_STAGE_COMPLETE)) {
 		base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
@@ -468,10 +473,11 @@ void Task_NormalDrive(void *param) {
 		    BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
 		    BITCLEAR(docking_stage, DOCKING_STAGE_3);
 		}
-	    }else if (BITCHECK(docking_stage, DOCKING_STAGE_NONE)) {
-		    lifting_mode = NORMAL;
-		    BITCLEAR(docking_stage, DOCKING_STAGE_NONE);
-		}
+	    }
+	    else if (BITCHECK(docking_stage, DOCKING_STAGE_NONE)) {
+		lifting_mode = NORMAL;
+		BITCLEAR(docking_stage, DOCKING_STAGE_NONE);
+	    }
 	    continue;
 	}
 	else {
@@ -539,12 +545,54 @@ void Task_NormalDrive(void *param) {
     }
 }
 
-void Task_Docking(void* param){
-    while(1){
+void Task_Docking(void *param) {
+    //Store notification value
+    uint32_t notification = 0;
+    uint32_t docking_start_mask = 1 << START_DOCKING_BIT;
+//    notification = docking_start_mask;
+    //Used to indicate docking phase
+    uint8_t docking_stage = DOCKING_STAGE_NONE;
+    while (1) {
+	if (notification != docking_start_mask) {
+	    xTaskNotifyWait(0, 0, &notification, portMAX_DELAY);
+	    BITSET(docking_stage, DOCKING_STAGE_1);
+	}
+
+	//Docking task
+	if (BITCHECK(docking_stage, DOCKING_STAGE_COMPLETE)) {
+	    base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
+	    BITCLEAR(docking_stage, DOCKING_STAGE_COMPLETE);
+	}
+	else if (BITCHECK(docking_stage, DOCKING_STAGE_1)) {
+//	    if (move_forward(1)) {
+		BITSET(docking_stage, DOCKING_STAGE_2);
+		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
+		BITCLEAR(docking_stage, DOCKING_STAGE_1);
+//	    }
+	}
+	else if (BITCHECK(docking_stage, DOCKING_STAGE_2)) {
+//	    if (turn_angle(45, 0)) {
+		BITSET(docking_stage, DOCKING_STAGE_3);
+		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
+		BITCLEAR(docking_stage, DOCKING_STAGE_2);
+//	    }
+	}
+	else if (BITCHECK(docking_stage, DOCKING_STAGE_3)) {
+//	    if (move_forward(1)) {
+		BITSET(docking_stage, DOCKING_STAGE_NONE);
+		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
+		BITCLEAR(docking_stage, DOCKING_STAGE_3);
+//	    }
+	}
+	else if (BITCHECK(docking_stage, DOCKING_STAGE_NONE)) {
+	    lifting_mode = NORMAL;
+	    BITCLEAR(docking_stage, DOCKING_STAGE_NONE);
+	    xTaskNotify(task_normalDrive, 0, eNoAction);
+	    notification = 0;
+	}
 
     }
 }
-
 
 void Task_Wheel_Encoder(void *param) {
     //Initialize encoder sensor for base wheel
@@ -644,13 +692,12 @@ void Task_Climb_Encoder(void *param) {
 
     while (1) {
 	//Stop the encoder from running if not in climbing mode
-	if(lifting_mode != CLIMB_DOWN || lifting_mode != CLIMB_UP || lifting_mode != RETRACTION)
+	if (lifting_mode != CLIMB_DOWN || lifting_mode != CLIMB_UP || lifting_mode != RETRACTION)
 
-
-	/*Climbing Sensor Data Acquisition and Processing*/
-	/*Data Acquisition*/
-	//Read encoder data
-	ENCODER_Get_Angle(&encoderBack);
+	    /*Climbing Sensor Data Acquisition and Processing*/
+	    /*Data Acquisition*/
+	    //Read encoder data
+	    ENCODER_Get_Angle(&encoderBack);
 	ENCODER_Get_Angle(&encoderFront);
 
 	/*Error Handling*/
@@ -857,7 +904,7 @@ void Task_Climbing(void *param) {
     //Store notification value
     uint32_t notification = 0;
     uint32_t climbing_start_mask = 1 << START_CLIMBING_BIT;
-    notification = climbing_start_mask;
+//    notification = climbing_start_mask;
 
     Operation_Mode dummy_mode = EMPTY; //to store climbing up or down state
 
@@ -872,7 +919,7 @@ void Task_Climbing(void *param) {
     runMotor(&rearMotor, 0);
     runMotor(&backMotor, 0);
     emBrakeMotor(0);
-    xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
+//    xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
     while (1) {
 #ifdef BUTTON_CONTROL
 	/*Button Control*/
@@ -899,8 +946,8 @@ void Task_Climbing(void *param) {
 #endif
 
 #ifdef ONE_BUTTON_CONTROL_CURB_CLIMBING
-	if(notification != climbing_start_mask){
-	    xTaskNotifyWait( 0, 0, &notification, portMAX_DELAY);
+	if (notification != climbing_start_mask) {
+ 	    xTaskNotifyWait(0, 0, &notification, portMAX_DELAY);
 	}
 
 	//when button3 is pressed, Extend climbing wheel until both wheel touches the ground
@@ -1082,7 +1129,7 @@ void Task_Climbing(void *param) {
 	    speed[BACK_INDEX] = 0;
 	    climb_first_iteration = 1;
 	    xTaskNotify(task_normalDrive, 0, eNoAction);
-	    ulTaskNotifyValueClear(NULL, notification);
+	    notification = 0;
 	}
 	//**********************************************************************************//
 
@@ -1421,10 +1468,10 @@ static bool turn_angle(float angle_desired, float curr_angle) {
     if (!first_loop && fabs(angle_desired - angle_travelled) > 0.01) {
 	//Use wheel odometry to trace angle turn
 	int32_t left_enc_tick = base_velocity[LEFT_INDEX].total_position - prev_enc[LEFT_INDEX];
-	int32_t right_enc_tick= base_velocity[RIGHT_INDEX].total_position - prev_enc[RIGHT_INDEX];
+	int32_t right_enc_tick = base_velocity[RIGHT_INDEX].total_position - prev_enc[RIGHT_INDEX];
 	float tmp = (M_PI * WHEEL_DIA) / (BASE_WIDTH * BRITER_RS485_PPR);
 	//Add angle travelled at t to total angle travelled
-	angle_travelled += tmp * (float)(right_enc_tick - left_enc_tick);
+	angle_travelled += tmp * (float) (right_enc_tick - left_enc_tick);
 	turnangle_input = angle_travelled;
 	turnangle_setpoint = angle_desired;
 	//Refresh PID controller

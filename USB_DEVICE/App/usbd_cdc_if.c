@@ -270,6 +270,7 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
   uint8_t tx_data = 0;
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
   USBD_CDC_ReceivePacket(&hUsbDeviceFS);
@@ -286,7 +287,7 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
   }
   if(usbBuffer[0] == USB_SOI){
       //Check data length and calculate checksum
-      if(USB_EOI == usbBuffer[2 + usbBuffer[1]]){
+      if(USB_EOI == usbBuffer[2 + usbBuffer[1]] && lifting_mode == NORMAL){
 	  tx_data = USB_RX_SUCCESS;
 	  for(int i = 0; i < 4; i++){
 	      memcpy(&docking_cmd[i], usbBuffer+2+i*4, sizeof(float));
@@ -294,7 +295,7 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 	  CDC_Transmit_FS(&tx_data, sizeof(tx_data));
 	  //If data receive is correct, initiate docking mode
 	  lifting_mode = DOCKING;
-	  xTaskNotifyFromISR(task_control, 0, 0, eNoAction);
+	  xTaskNotifyFromISR(task_control, 0, eNoAction, &xHigherPriorityTaskWoken);
       }
       else{
 	  tx_data = USB_RX_FAIL;
@@ -304,6 +305,7 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
   }
   memset(usbBuffer, '\0', len);
 
+  portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 
   return (USBD_OK);
   /* USER CODE END 6 */
