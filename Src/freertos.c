@@ -529,7 +529,7 @@ void Task_Docking(void *param) {
 	if (BITCHECK(docking_stage, DOCKING_STAGE_COMPLETE)) {
 	    base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
 	    BITCLEAR(docking_stage, DOCKING_STAGE_COMPLETE);
-	    vTaskDelay(500);
+	    vTaskDelay(100);
 	}
 	else if (BITCHECK(docking_stage, DOCKING_STAGE_1)) {
 	    if (turn_angle(docking_cmd[0], 0)) {
@@ -566,7 +566,7 @@ void Task_Docking(void *param) {
 	    xTaskNotify(task_normalDrive, 0, eNoAction);
 	    notification = 0;
 	}
-	vTaskDelay(1);
+	vTaskDelay(5);
 
     }
 }
@@ -841,6 +841,7 @@ void Task_Joystick(void *param) {
 	ADC_DataRequest();
 	//Use mutex to safeguard joystick data being accessed and modified by task_normal_drive
 	if (xSemaphoreTake(mutex_joystick, pdMS_TO_TICKS(5)) == pdTRUE) {
+	    //Receive notification from ISR
 	    if (xTaskNotifyWait(0x00, ULONG_MAX, 0, 50) == pdTRUE) {
 		int16_t adc_rawData[8];
 		ADC_Read(adc_rawData);
@@ -1303,8 +1304,7 @@ static bool move_forward(float dist_desired) {
     static PID_t moveforward_pid = NULL;
     static struct pid_controller moveforward_ctrl;
     static float moveforward_input = 0, moveforward_output = 0, moveforward_setpoint = 0;
-    float moveforward_kp = 0.4, moveforward_ki = 0.2, moveforward_kd = 0.000;
-
+    float moveforward_kp = 0.25, moveforward_ki = 0.09, moveforward_kd = 0.01;
     //A scaling factor to account for distance correction (slip, friction, inaccurate wheel diameter measurement, etc)
     //0.97 is obtained through trial and error by running wheelchair with setpoint of 1m.
     dist_desired *= 0.97;
@@ -1323,6 +1323,8 @@ static bool move_forward(float dist_desired) {
 	prev_enc[RIGHT_INDEX] = base_velocity[RIGHT_INDEX].total_position;
 	first_loop = false;
 	dist_travelled = 0;
+	pid_reset(moveforward_pid);
+
 	return false;
     }
 
@@ -1349,6 +1351,9 @@ static bool move_forward(float dist_desired) {
     }
     else {
 	first_loop = true;
+	pid_reset(moveforward_pid);
+	base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
+
 	return true;
     }
 }
@@ -1370,7 +1375,7 @@ static bool turn_angle(float angle_desired, float curr_angle) {
     //PID setup
     static struct pid_controller turnangle_ctrl;
     static float turnangle_input = 0, turnangle_output = 0, turnangle_setpoint = 0;
-    float turnangle_kp = 0.5, turnangle_ki = 0.25, turnangle_kd = 0.00;
+    float turnangle_kp = 0.8, turnangle_ki = 0.45, turnangle_kd = 0.05;
 
     curr_angle = TO_RAD(curr_angle);
     angle_desired = TO_RAD(angle_desired) * 0.97;
@@ -1437,6 +1442,7 @@ static bool turn_angle(float angle_desired, float curr_angle) {
 	angle_travelled = 0;
 	prev_enc[LEFT_INDEX] = base_velocity[LEFT_INDEX].total_position;
 	prev_enc[RIGHT_INDEX] = base_velocity[RIGHT_INDEX].total_position;
+	pid_reset(turnangle_pid);
 	return false;
     }
 
