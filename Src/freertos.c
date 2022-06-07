@@ -748,8 +748,7 @@ void Task_Switches(void *param) {
 	    lifting_mode = CURB_DETECTED;
 	    xTaskNotify(task_normalDrive, 0, eNoAction);
 	}
-	//Use button 2 to get out of STOP mode and enter into curb detected
-	//Where the system is only allowed to move backward
+	//As an emergency stop button to stop all action
 	if (button_state.button2 == 1) {
 	    lifting_mode = DANGER;
 	    xTaskNotify(task_control, 0, eNoAction);
