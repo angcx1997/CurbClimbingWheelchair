@@ -1,5 +1,6 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 import csv
+from os import sync
 import struct
 import serial
 import time
@@ -81,6 +82,7 @@ def main():
 
     # Load csv
     csv_name = config['csv-filename']
+    # f = open("../log/"+csv_name, "w")
     f = open(csv_name, "w")
     writer = csv.writer(f, delimiter=",")
     
@@ -94,14 +96,32 @@ def main():
 
     # Setup serial port
     ser = serial.Serial()
-    while (setupPort(ser,config) != True):
-        pass
+    port_open = False
+    while(not port_open):
+        port_open = setupPort(ser,config)
+        if (port_open == False):
+            # Reset serial port
+            ser.close()
+            time.sleep(1)
+        
+    time.sleep(1)
+    # while (setupPort(ser,config) != True):
+    #     pass
 
     # Data logger
     index = 1
+    false_reception = 0
+
+    sync_flag = False
     
     # Start reading the serial port
     while True:
+        command = 23
+        # print(b'\xff')
+        ser.write(b'\xff')
+        # ser.write(bytes(command, 'utf-8'))
+        # time.sleep(0.05)
+        
         line = ser.read(packet_length)
         data_integrity = checkIntegrity(line,config)
 
@@ -115,7 +135,26 @@ def main():
                 data, start_idx = byteFormatter(type, line, start_idx)
                 logged_data.append(data)
             writer.writerow(logged_data)
-            index+=1    
+            index+=1
+        else:
+            false_reception += 1
+
+        if(false_reception > 10):
+            # Reset serial port
+            ser.close()
+            # Setup serial port
+            ser = serial.Serial()
+            port_open = False
+            while(not port_open):
+                port_open = setupPort(ser,config)
+                if (port_open == False):
+                    # Reset serial port
+                    ser.close()
+                    time.sleep(1)
+            false_reception = 0
+
+
+
 
 #Run main() function
 if __name__ == '__main__':
