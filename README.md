@@ -56,3 +56,6 @@ The climbing action can be briefly explained as following step:
 <p align="center">
   <img src="/image/StateMachine-WithDocking.drawio.png">
 </p>
+
+## Data Logging
+Refer to `script/README.md`
