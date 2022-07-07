@@ -20,6 +20,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+
 #include <adc.h>
 #include <battery.h>
 #include <bd25l.h>
@@ -58,8 +59,8 @@
 #include <tfmini.h>
 #include <timers.h>
 #include <usb_device.h>
+#include <usbd_cdc_if.h>
 #include <X2_6010S.h>
-#include <../script/UnionDataStruct.h>
 
 /* USER CODE END Includes */
 /* Private typedef -----------------------------------------------------------*/
@@ -280,10 +281,12 @@ uint32_t battery_level = 25;
 //Speed PID Controller for 2 wheel
 PID_Struct base_pid[2];
 const float base_kp[2] = {
-	0.51588, 0.51588
+//	0.51588, 0.51588
+	0,0
 }; /*!< Proportional constant in both left and right wheel PID */
 const float base_ki[2] = {
-	103.1758, 103.9472
+//	103.1758, 103.9472
+	90,90
 }; /*!< Integral constant in both left and right wheel PID */
 const float kd[2] = {
 	0.0, 0.0
@@ -298,6 +301,7 @@ float pid_freq = 1000;
 
 //Docking commmand
 float docking_cmd[4];
+bool moveForwardFlag = false;
 /* USER CODE END Variables */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -348,8 +352,8 @@ void Task_Control(void *param) {
 	    LED_Mode_Configuration(DANGER);
 	    portEXIT_CRITICAL();
 	}
-	else if (lifting_mode == DOCKING){
-	    xTaskNotify(task_docking, (1 << START_DOCKING_BIT), eSetValueWithOverwrite );
+	else if (lifting_mode == DOCKING) {
+	    xTaskNotify(task_docking, (1 << START_DOCKING_BIT), eSetValueWithOverwrite);
 	}
     }
 }
@@ -468,12 +472,11 @@ void Task_NormalDrive(void *param) {
 	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
 
 //	if (moveForwardFlag == false) {
-//	    moveForwardFlag = turn_angle(45, heading_angle);
-//	    moveForwardFlag = move_forward(1);
+//	    moveForwardFlag = turn_angle(-45, heading_angle);
+//	    moveForwardFlag = move_forward(0.5);
 //	}
 //	if (moveForwardFlag == true) {
 //	    base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
-//	    attitude.y = 0;
 //	}
 
 #ifdef DATA_xxxLOGGING
@@ -524,48 +527,53 @@ void Task_Docking(void *param) {
 	    xTaskNotifyWait(0, 0, &notification, portMAX_DELAY);
 	    BITSET(docking_stage, DOCKING_STAGE_1);
 	}
+	if (lifting_mode == DOCKING) {
+	    //Docking task
+	    if (BITCHECK(docking_stage, DOCKING_STAGE_COMPLETE)) {
+		base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
+		BITCLEAR(docking_stage, DOCKING_STAGE_COMPLETE);
+		vTaskDelay(500);
+	    }
+	    else if (BITCHECK(docking_stage, DOCKING_STAGE_1)) {
+		if (turn_angle(docking_cmd[0], 0)) {
+		    BITSET(docking_stage, DOCKING_STAGE_2);
+		    BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
+		    BITCLEAR(docking_stage, DOCKING_STAGE_1);
+		}
+	    }
+	    else if (BITCHECK(docking_stage, DOCKING_STAGE_2)) {
+		if (move_forward(docking_cmd[1])) {
+		    BITSET(docking_stage, DOCKING_STAGE_3);
+		    BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
+		    BITCLEAR(docking_stage, DOCKING_STAGE_2);
+		}
+	    }
+	    else if (BITCHECK(docking_stage, DOCKING_STAGE_3)) {
+		if (turn_angle(docking_cmd[2], 0)) {
+		    BITSET(docking_stage, DOCKING_STAGE_4);
+		    BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
+		    BITCLEAR(docking_stage, DOCKING_STAGE_3);
+		}
+	    }
+	    else if (BITCHECK(docking_stage, DOCKING_STAGE_4)) {
+		if (move_forward(docking_cmd[3])) {
+		    BITSET(docking_stage, DOCKING_STAGE_NONE);
+		    BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
+		    BITCLEAR(docking_stage, DOCKING_STAGE_4);
+		}
+	    }
+	    else if (BITCHECK(docking_stage, DOCKING_STAGE_NONE)) {
+		lifting_mode = NORMAL;
+		BITCLEAR(docking_stage, DOCKING_STAGE_NONE);
+		uint8_t tx_data = 0xAB;
+		CDC_Transmit_FS(&tx_data, sizeof(tx_data));
+		vTaskDelay(500);
+		xTaskNotify(task_normalDrive, 0, eNoAction);
+		notification = 0;
+	    }
 
-	//Docking task
-	if (BITCHECK(docking_stage, DOCKING_STAGE_COMPLETE)) {
-	    base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
-	    BITCLEAR(docking_stage, DOCKING_STAGE_COMPLETE);
-	    vTaskDelay(100);
 	}
-	else if (BITCHECK(docking_stage, DOCKING_STAGE_1)) {
-	    if (turn_angle(docking_cmd[0], 0)) {
-		BITSET(docking_stage, DOCKING_STAGE_2);
-		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
-		BITCLEAR(docking_stage, DOCKING_STAGE_1);
-	    }
-	}
-	else if (BITCHECK(docking_stage, DOCKING_STAGE_2)) {
-	    if (move_forward(docking_cmd[1])){
-		BITSET(docking_stage, DOCKING_STAGE_3);
-		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
-		BITCLEAR(docking_stage, DOCKING_STAGE_2);
-	    }
-	}
-	else if (BITCHECK(docking_stage, DOCKING_STAGE_3)) {
-	    if (turn_angle(docking_cmd[2], 0)) {
-		BITSET(docking_stage, DOCKING_STAGE_4);
-		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
-		BITCLEAR(docking_stage, DOCKING_STAGE_3);
-	    }
-	}
-	else if (BITCHECK(docking_stage, DOCKING_STAGE_4)) {
-	    if (move_forward(docking_cmd[3])) {
-		BITSET(docking_stage, DOCKING_STAGE_NONE);
-		BITSET(docking_stage, DOCKING_STAGE_COMPLETE);
-		BITCLEAR(docking_stage, DOCKING_STAGE_4);
-	    }
-	}
-	else if (BITCHECK(docking_stage, DOCKING_STAGE_NONE)) {
-	    lifting_mode = NORMAL;
-	    BITCLEAR(docking_stage, DOCKING_STAGE_NONE);
-	    vTaskDelay(500);
-	    xTaskNotify(task_normalDrive, 0, eNoAction);
-	    notification = 0;
-	}
+
 	vTaskDelay(5);
 
     }
@@ -923,7 +931,7 @@ void Task_Climbing(void *param) {
 
 #ifdef ONE_BUTTON_CONTROL_CURB_CLIMBING
 	if (notification != climbing_start_mask) {
- 	    xTaskNotifyWait(0, 0, &notification, portMAX_DELAY);
+	    xTaskNotifyWait(0, 0, &notification, portMAX_DELAY);
 	}
 
 	//when button3 is pressed, Extend climbing wheel until both wheel touches the ground
@@ -987,7 +995,7 @@ void Task_Climbing(void *param) {
 		//If curb_height is positive, should be climbing up process and vice versa
 		float curb_height = CLIMBING_LEG_LENGTH * cos(TO_RAD(encoderFront.angleDeg)) + BASE_HEIGHT
 			- FRONT_CLIMB_WHEEL_DIAMETER / 2.0;
-		curb_height += 0.015; //Small error correction 10%
+		curb_height += 0.02; //Small error correction 10%
 
 		//First determine whether is the height climb-able
 		float back_lifting_height = BACK_BASE_HEIGHT + curb_height - HUB_DIAMETER / 2;
@@ -1014,8 +1022,10 @@ void Task_Climbing(void *param) {
 	    //Mathematical Model
 	    //Start Climbing process
 	    if (finish_climbing_flag == false) {
-		if (!in_climb_process(MAX_FRONT_CLIMBING_ENC, back_encoder_input))
-		    finish_climbing_flag = true;
+//		if (!in_climb_process(MAX_FRONT_CLIMBING_ENC, back_encoder_input))
+//		    finish_climbing_flag = true;
+		if (!in_climb_process(MAX_FRONT_CLIMBING_ENC, 2800))
+				    finish_climbing_flag = true;
 	    }
 
 	    if (finish_climbing_flag == true) {
@@ -1118,7 +1128,7 @@ void Task_Climbing(void *param) {
 	    emBrakeMotor(1);
 
 	//Note that this time is critical to smooth climbing execution
-	vTaskDelay(100);
+	vTaskDelay(50);
     }
 }
 
@@ -1303,15 +1313,17 @@ static bool move_forward(float dist_desired) {
     static PID_t moveforward_pid = NULL;
     static struct pid_controller moveforward_ctrl;
     static float moveforward_input = 0, moveforward_output = 0, moveforward_setpoint = 0;
-    float moveforward_kp = 0.25, moveforward_ki = 0.09, moveforward_kd = 0.01;
+    float moveforward_kp = 0.3, moveforward_ki = 0.09, moveforward_kd = 0.01;
+//    float moveforward_kp = 0.15, moveforward_ki = 0.08, moveforward_kd = 0.01;
     //A scaling factor to account for distance correction (slip, friction, inaccurate wheel diameter measurement, etc)
     //0.97 is obtained through trial and error by running wheelchair with setpoint of 1m.
-    dist_desired *= 0.97;
+//    dist_desired *= 0.97;
+    dist_desired *= 0.83;
 
     if (moveforward_pid == NULL) {
 	moveforward_pid = pid_create(&moveforward_ctrl, &moveforward_input, &moveforward_output, &moveforward_setpoint,
 		moveforward_kp, moveforward_ki, moveforward_kd);
-	pid_limits(moveforward_pid, -0.15, 0.15);
+	pid_limits(moveforward_pid, -0.2, 0.2);
 	pid_sample(moveforward_pid, 1);
 	pid_auto(moveforward_pid);
     }
@@ -1377,7 +1389,7 @@ static bool turn_angle(float angle_desired, float curr_angle) {
     float turnangle_kp = 0.8, turnangle_ki = 0.45, turnangle_kd = 0.05;
 
     curr_angle = TO_RAD(curr_angle);
-    angle_desired = TO_RAD(angle_desired) * 0.97;
+    angle_desired = TO_RAD(angle_desired) * 0.9;
 
     if (turnangle_pid == NULL) {
 	turnangle_pid = pid_create(&turnangle_ctrl, &turnangle_input, &turnangle_output, &turnangle_setpoint,
@@ -1601,12 +1613,15 @@ static bool in_climb_process(int front_enc, int back_enc) {
  * @param pid_right	right pid struct
  */
 static void base_velocity_controller(float left_vel, float right_vel, PID_Struct *pid_left, PID_Struct *pid_right) {
+
     float pwm_volt[2] = {
 	    0
     };
+
     int motor_output[2] = {
 	    0
     };
+#if 0
     if (fabs(left_vel) == 0 && fabs(base_velocity[LEFT_INDEX].velocity) < 0.05) {
 	//Reset PID if it is too small
 	pwm_volt[LEFT_INDEX] = 0;
@@ -1640,6 +1655,22 @@ static void base_velocity_controller(float left_vel, float right_vel, PID_Struct
     if (fabs(pwm_volt[RIGHT_INDEX]) > 0.05 && fabs(pwm_volt[RIGHT_INDEX]) < deadband_volt[RIGHT_INDEX]) {
 	pwm_volt[RIGHT_INDEX] = deadband_vel[RIGHT_INDEX] * SIGN(pwm_volt[RIGHT_INDEX]);
     }
+#else
+    const float deadband_vel[2] = {
+	    0.15, 0.15
+    };
+    float deadband_volt[2] = {
+	    0.2*kf[LEFT_INDEX], 0.2*kf[RIGHT_INDEX]
+    };
+    pwm_volt[LEFT_INDEX] = left_vel * kf[LEFT_INDEX];
+    pwm_volt[RIGHT_INDEX] = right_vel * kf[RIGHT_INDEX];
+    if (fabs(pwm_volt[LEFT_INDEX]) > 0.05 && fabs(pwm_volt[LEFT_INDEX]) < deadband_volt[LEFT_INDEX]) {
+	pwm_volt[LEFT_INDEX] = deadband_volt[LEFT_INDEX] * SIGN(pwm_volt[LEFT_INDEX]);
+    }
+    if (fabs(pwm_volt[RIGHT_INDEX]) > 0.05 && fabs(pwm_volt[RIGHT_INDEX]) < deadband_volt[RIGHT_INDEX]) {
+	pwm_volt[RIGHT_INDEX] = deadband_volt[RIGHT_INDEX] * SIGN(pwm_volt[RIGHT_INDEX]);
+    }
+#endif
 
     motor_output[LEFT_INDEX] = (float) (pwm_volt[LEFT_INDEX] / battery_level) * SABERTOOTH_MAX_ALLOWABLE_VALUE;
     motor_output[RIGHT_INDEX] = (float) (pwm_volt[RIGHT_INDEX] / battery_level) * SABERTOOTH_MAX_ALLOWABLE_VALUE;
