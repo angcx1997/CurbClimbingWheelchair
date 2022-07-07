@@ -75,10 +75,10 @@ const float BACK_BASE_HEIGHT = 0.15;
 //FRONT_CLIMBING is the pos that the base above the climbing wheel w
 const uint32_t MAX_FRONT_ALLOWABLE_ENC = 3100;
 const uint32_t MIN_FRONT_ALLOWABLE_ENC = 6600; //6600
-const uint32_t MAX_FRONT_CLIMBING_ENC = 1950; //used for climbing up
+const uint32_t MAX_FRONT_CLIMBING_ENC = 2150; //used for climbing up
 const uint32_t MAX_BACK_ALLOWABLE_ENC = 3000;
 const uint32_t MIN_BACK_ALLOWABLE_ENC = 7200;
-const uint32_t MAX_BACK_CLIMBING_ENC = 1950; //used when climbing down
+const uint32_t MAX_BACK_CLIMBING_ENC = 1900; //used when climbing down
 const uint32_t FRONT_FULL_ROTATION_ENC = 4096 * FRONT_GEAR_RATIO;
 const uint32_t BACK_FULL_ROTATION_ENC = 4096 * BACK_GEAR_RATIO;
 /* USER CODE END PM */
@@ -178,14 +178,16 @@ struct pid_controller frontClimb_ctrl;
 PID_t frontClimb_pid;
 float frontClimb_input = 0, frontClimb_output = 0;
 float frontClimb_setpoint = 0;
-float frontClimb_kp = 0.35, frontClimb_ki = 0.003, frontClimb_kd = 0.00001;
+//float frontClimb_kp = 0.35, frontClimb_ki = 0.003, frontClimb_kd = 0.00001;
+float frontClimb_kp = 0.4, frontClimb_ki = 0.003, frontClimb_kd = 0.00001;
 
 //Back Climbing Position Control
 struct pid_controller backClimb_ctrl;
 PID_t backClimb_pid;
 float backClimb_input = 0, backClimb_output = 0;
 float backClimb_setpoint = 0;
-float backClimb_kp = 0.3, backClimb_ki = 0.004, backClimb_kd = 0.00001;
+//float backClimb_kp = 0.3, backClimb_ki = 0.004, backClimb_kd = 0.00001;
+float backClimb_kp = 0.4, backClimb_ki = 0.004, backClimb_kd = 0.00001;
 
 //TF-mini
 uint16_t distance = 0;
@@ -509,7 +511,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	     }
 	     */
 
-	    if (distanceNoNoise >= 20 && lifting_mode == NORMAL) {
+	    if (distanceNoNoise >= 20 && ((lifting_mode == NORMAL) || (lifting_mode == DOCKING))) {
 		//stop the base wheel completely
 		lifting_mode = STOP;
 		xTaskNotifyFromISR(task_normalDrive, 0, eNoAction, &xHigherPriorityTaskWoken);
