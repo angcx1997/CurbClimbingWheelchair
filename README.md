@@ -62,11 +62,14 @@ The climbing action can be briefly explained as following step:
 Refer to `script/README.md`
 
 ## Docking
+
 Docking feature require to work with curb detection algorithm developed by Kuan Yuee. The algorithm will generate 4 action which is
+
 1. Turn angle
 2. Move forward distance
 3. Turn angle (to face the curb the right way)
 4. Move forward (to close the gap between wheelchair and curb) 
-The 4 action must generate in the mentioned sequence in order for the wheelchair to perform **dead reckoning** to reach the desired goal with correct pose. Otherwise, the docking may fail and may cause danger to the user.
+
+The 4 action must generate in the mentioned sequence in order for the wheelchair to perform ***dead reckoning*** to reach the desired goal with correct pose. Otherwise, the docking may fail and may cause danger to the user.
 In order to use docking mode, USB is required to connect the PC to STM32.
 When action is received, USB interrupt will be triggered and activate Task_Docking.
