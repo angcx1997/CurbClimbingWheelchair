@@ -904,6 +904,9 @@ void Task_Climbing(void *param) {
     runMotor(&backMotor, 0);
     emBrakeMotor(0);
 
+    TickType_t tick = xTaskGetTickCount();
+    const TickType_t period = pdMS_TO_TICKS(50); //execution period
+
     while (1) {
 #ifdef BUTTON_CONTROL
 	/*Button Control*/
@@ -1128,7 +1131,7 @@ void Task_Climbing(void *param) {
 	    emBrakeMotor(1);
 
 	//Note that this time is critical to smooth climbing execution
-	vTaskDelay(50);
+	vTaskDelayUntil(&tick, period);
     }
 }
 
