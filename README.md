@@ -31,9 +31,18 @@ Tips: Add the code in between the section
 | Climbing motor encoder | CAN1| 
 | MPU6050 | I2C1 | 
 | Hub Motor (X2_6010S) | RS485/UART3 | 
-| Base motor (Sabertooth | TIM3 (Right)CH1  (Left)CH2| 
+| Base motor (Sabertooth) | TIM3 (Right)CH1  (Left)CH2| 
 | Driving Encoder | RS485/UART4 |
 | Curb detector          | UART1 |
+
+## General Guideline
+
+1. The operating used is FreeRTOS with round-robin as scheduling policy.
+2. The code organization is as follow:
+    - `main.c` consists of function callback, variable definition and freeRTOS handler such as `TaskHandler_t`, `QueueHandle_t`, etc.
+    - `freertos.c` consists of task function definition with the function declaration in `main.h`
+    - `peripheral.h/.c` and `stm32f4xx_hal_msp.h/.c` consist of low level peripheral initialization code.
+     
 
 ## Usage
 In normal operation mode, the wheelchair could be used as usual by controlled through joystick input.
