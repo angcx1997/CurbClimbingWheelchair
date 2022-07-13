@@ -35,7 +35,7 @@ Tips: Add the code in between the section
 | Driving Encoder | RS485/UART4 |
 | Curb detector          | UART1 |
 
-## General Guideline
+## General Guideline if you are interested in contributing the code
 
 1. The operating used is FreeRTOS with round-robin as scheduling policy.
 2. The code organization is as follow:
