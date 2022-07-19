@@ -187,7 +187,7 @@ PID_t backClimb_pid;
 float backClimb_input = 0, backClimb_output = 0;
 float backClimb_setpoint = 0;
 //float backClimb_kp = 0.3, backClimb_ki = 0.004, backClimb_kd = 0.00001;
-float backClimb_kp = 0.4, backClimb_ki = 0.004, backClimb_kd = 0.00001;
+float backClimb_kp = 0.5, backClimb_ki = 0.004, backClimb_kd = 0.00001;
 
 //TF-mini
 uint16_t distance = 0;

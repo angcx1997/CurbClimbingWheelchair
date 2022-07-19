@@ -54,8 +54,8 @@ typedef enum {
     CLIMB_DOWN,
     RETRACTION,
     LANDING,
-    EMPTY,
-    IDLE,
+    EMPTY,//Happen before landing
+//    IDLE,
     STOP,
     DANGER,
     CURB_DETECTED,

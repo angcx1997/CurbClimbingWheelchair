@@ -341,7 +341,7 @@ void Task_Control(void *param) {
 
 	//Master control process
 	xTaskNotifyWait(0, 0, &ulNotifiedValue, portMAX_DELAY);
-
+	sensor_fault_e error = ulNotifiedValue;
 	if (lifting_mode == DANGER) {
 	    portENTER_CRITICAL();
 	    vTaskSuspendAll();
@@ -470,14 +470,6 @@ void Task_NormalDrive(void *param) {
 
 	DDrive_SpeedMapping(&differential_drive_handler, cmd_vel.angular, cmd_vel.linear, gear_level);
 	dDriveToST_Adapter(&differential_drive_handler, &sabertooth_handler);
-
-//	if (moveForwardFlag == false) {
-//	    moveForwardFlag = turn_angle(-45, heading_angle);
-//	    moveForwardFlag = move_forward(0.5);
-//	}
-//	if (moveForwardFlag == true) {
-//	    base_velocity_controller(0, 0, &base_pid[LEFT_INDEX], &base_pid[RIGHT_INDEX]);
-//	}
 
 #ifdef DATA_xxxLOGGING
 	LOG_left_ref_vel.data = v;
